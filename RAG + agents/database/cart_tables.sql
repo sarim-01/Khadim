@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS cart (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+--
 -- Table for items in cart (can be menu items or deals)
 CREATE TABLE IF NOT EXISTS cart_items (
     cart_id UUID REFERENCES cart(cart_id) ON DELETE CASCADE,

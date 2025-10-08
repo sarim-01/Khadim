@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS cart (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+--
 CREATE TABLE IF NOT EXISTS cart_items (
     cart_id TEXT,
     item_id INTEGER,
