@@ -1,0 +1,37 @@
+# Environment variables
+.env
+
+# Python virtual environment
+venv/
+env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+h
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# VS Code settings
+.vscode/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local FAISS index files (if you save them locally)
+*.index
+
+# Logs
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Operating System
+.DS_Store
+Thumbs.db
