@@ -1,3 +1,5 @@
+# chat_agent.py
+
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -5,6 +7,54 @@ from dotenv import load_dotenv
 load_dotenv()
 _api = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Define the "tools" (our Python functions) that the AI can use.
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "add_to_cart",
+            "description": "Adds an item to the user's shopping cart.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item_name": {"type": "string", "description": "The name of the menu item or deal to add."},
+                    "quantity": {"type": "integer", "description": "The number of items to add."},
+                },
+                "required": ["item_name", "quantity"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_from_cart",
+            "description": "Removes an item from the user's shopping cart.",
+            "parameters": {
+                "type": "object",
+                "properties": {"item_name": {"type": "string", "description": "The name of the item to remove."}},
+                "required": ["item_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_cart",
+            "description": "Shows the current contents of the user's shopping cart.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "place_order",
+            "description": "Finalizes the user's order.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+# PROMPT : FOR THE "CONVERSATIONAL" BRAIN (get_llm_response)
 SYSTEM_PROMPT = """
 You are an experienced, friendly, and attentive restaurant waiter AI assistant for a multi-cuisine restaurant serving Fast Food, Chinese, Pakistani/Desi, and BBQ. Your role is to help customers explore the menu, recommend dishes, and provide details about deals.
 
@@ -73,41 +123,19 @@ AI: "Our Szechuan Beef is a single-serving dish with a high spice level. If you 
 - Provide the best suggestions balancing individual items and deals
 """
 
+def get_ai_response(user_input: str, conversation_history: list, menu_context: str):
+    full_prompt = f"{SYSTEM_PROMPT}\n\n## MENU CONTEXT:\n{menu_context}"
+    
+    messages = [{"role": "system", "content": full_prompt}]
+    messages.extend(conversation_history)
+    messages.append({"role": "user", "content": user_input})
 
-def ask_bot(contexts: list[str], question: str, conversation_history: list = None) -> str:
-    context_block = "\n\n---\n\n".join(contexts)
-    
-    # Build conversation context
-    conversation_context = ""
-    if conversation_history:
-        conversation_context = "CONVERSATION HISTORY:\n"
-        for i, msg in enumerate(conversation_history[-6:]):  # Keep last 6 messages for context
-            role = "Customer" if msg["role"] == "user" else "Waiter"
-            conversation_context += f"{role}: {msg['content']}\n"
-        conversation_context += "\n"
-    
-    user_prompt = (
-        f"{conversation_context}"
-        f"CURRENT MENU & DEALS CONTEXT:\n{context_block}\n\n"
-        f"CURRENT CUSTOMER QUESTION: {question}\n\n"
-        f"Please respond as a helpful restaurant waiter, using the conversation history to understand context and references."
-    )
-    
-    # Build messages for API
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    
-    # Add conversation history
-    if conversation_history:
-        messages.extend(conversation_history[-4:])  # Keep last 4 exchanges
-    
-    # Add current question
-    messages.append({"role": "user", "content": user_prompt})
-    
-    resp = _api.chat.completions.create(
+    # Make one single, smart call to the API
+    response = _api.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        max_tokens=300,
-        temperature=0.7
+        tools=tools,
+        tool_choice="auto",  # Let the model decide whether to use a tool or not
     )
     
-    return resp.choices[0].message.content.strip()
+    return response.choices[0].message
