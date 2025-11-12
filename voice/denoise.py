@@ -6,6 +6,7 @@ import numpy as np
 
 AUDIO_PATH = r"C:\Users\zaina\OneDrive\Desktop\Khadim-Whisper\Test audio.m4a"
 
+#audio
 audio, sr = librosa.load(AUDIO_PATH, sr=16000)
 print(f"Loaded audio: {AUDIO_PATH}")
 print(f"Sample rate: {sr}, Duration: {len(audio)/sr:.2f}s")
@@ -22,6 +23,7 @@ print(f"Average amplitude after:  {np.mean(np.abs(denoised_audio)):.6f}")
 
 plt.figure(figsize=(12, 5))
 
+#plots
 plt.subplot(2, 1, 1)
 plt.plot(audio, color='gray')
 plt.title("Original Audio")
@@ -36,3 +38,4 @@ plt.ylabel("Amplitude")
 
 plt.tight_layout()
 plt.show()
+
