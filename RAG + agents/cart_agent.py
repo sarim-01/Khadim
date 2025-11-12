@@ -9,7 +9,7 @@ from config import AGENT_TASKS_CHANNEL
 
 class CartAgent:
     """
-    Simple cart agent for Khadim restaurant system.
+    Cart agent for Khadim
     Handles: add items, remove items, view cart, clear cart, and place order.
     """
     
@@ -130,7 +130,7 @@ class CartAgent:
             with self.db.get_connection() as conn:
                 with conn.cursor() as cur:
                     if item_name:
-                        # Remove by name (more user-friendly)
+                        # Remove by name 
                         cur.execute("""
                             DELETE FROM cart_items 
                             WHERE cart_id = %s AND item_name ILIKE %s
@@ -222,8 +222,6 @@ class CartAgent:
     def place_order(self, cart_id: str) -> Dict:
         """
         Marks the cart as inactive and clears the items from cart_items table.
-        It does NOT save the order to the 'orders' table (that's the OrderAgent's job).
-        It returns the summary for the OrderAgent to use.
         """
         try:
             cart_summary = self.get_cart_summary(cart_id)
@@ -265,9 +263,7 @@ class CartAgent:
                 'message': f"Cart Agent failed to finalize cart: {str(e)}",
                 'order_data': None
             }
-    
-    # ... (Your existing _extract_... and process_user_input methods remain unchanged) ...
-    # ... (No changes to _extract_quantity, _extract_special_requests, etc.) ...
+
     def _extract_quantity(self, text: str) -> int:
         """Extract quantity from user input"""
         numbers = re.findall(r'\d+', text)
@@ -295,10 +291,6 @@ class CartAgent:
 # --- NEW AGENT LISTENER SECTION ---
 
 def run_cart_agent():
-    """
-    Main loop for the Cart Agent.
-    Subscribes to the 'agent_tasks' channel and listens for work.
-    """
     print("🛒 Cart Agent is running and listening for tasks...")
     
     # Instantiate the agent's logic
@@ -357,6 +349,5 @@ def run_cart_agent():
                 print(f"Cart Agent: An error occurred: {e}")
 
 
-# This now starts the listener instead of the old test code
 if __name__ == "__main__":
     run_cart_agent()

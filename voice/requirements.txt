@@ -1,0 +1,22 @@
+# Core ML/Transformers
+transformers==4.44.2
+torch
+datasets
+accelerate
+tokenizers
+evaluate
+jiwer
+
+# Audio Processing
+librosa
+soundfile
+noisereduce
+
+# Text-to-Speech (for transcribe.py)
+gTTS
+
+# Utilities & Data Handling
+pandas
+numpy
+tqdm
+matplotlib

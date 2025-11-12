@@ -10,7 +10,6 @@ engine = create_engine(db_url)
 
 def format_menu_item(row):
     text = f"Menu Item: {row.item_name}"
-    # --- CHANGED: Added all new fields ---
     if pd.notna(row.item_description):
         text += f"\nDescription: {row.item_description}"
     if pd.notna(row.item_price):
@@ -25,7 +24,6 @@ def format_menu_item(row):
 
 def format_deal(row):
     text = f"Deal: {row.deal_name}"
-    # --- CHANGED: Added price and prep time ---
     if pd.notna(row.deal_price):
         text += f"\nPrice: {row.deal_price}"
     if pd.notna(row.serving_size):
@@ -42,7 +40,6 @@ def load_texts():
     formats each row into a text block, and returns a combined list.
     """
     with engine.connect() as conn:
-        # --- CHANGED: Updated query to select all required menu item fields ---
         menu_query = """
         SELECT
           mi.item_id,
@@ -56,7 +53,7 @@ def load_texts():
         ORDER BY mi.item_id;
         """
         
-        # --- CHANGED: Updated query to calculate prep time for deals ---
+        # --- query to calculate prep time for deals ---
         deal_query = """
         SELECT
           d.deal_id,
@@ -81,6 +78,46 @@ def load_texts():
     deal_texts = [format_deal(row) for _, row in deal_df.iterrows()]
 
     return menu_texts + deal_texts
+
+
+class SearchAgent:
+    """Simple Search Agent for matching menu items and deals"""
+    def __init__(self):
+        self.blocks = load_texts()
+
+    def search(self, term: str):
+        """Search for menu items or deals matching the given term"""
+        term_lower = term.lower()
+        hits = []
+        for block in self.blocks:
+            if term_lower in block.lower():
+                lines = block.splitlines()
+                entry = {"raw": block}
+                name_line = lines[0]
+                if "Menu Item:" in name_line:
+                    entry["type"] = "menu_item"
+                    entry["item_name"] = name_line.split(":", 1)[1].strip()
+                    entry["item_id"] = abs(hash(entry["item_name"])) % 1000
+                elif "Deal:" in name_line:
+                    entry["type"] = "deal"
+                    entry["item_name"] = name_line.split(":", 1)[1].strip()
+                    entry["deal_id"] = abs(hash(entry["item_name"])) % 1000
+                price = 0.0
+                for ln in lines:
+                    if ln.lower().startswith("price:"):
+                        try:
+                            price = float(ln.split(":", 1)[1].strip())
+                        except:
+                            pass
+                        break
+                entry["price"] = price
+                hits.append(entry)
+        return hits
+
+    def get_context_blocks(self):
+        """Get all text blocks as a single context string"""
+        return "\n\n---\n\n".join(self.blocks)
+
 
 if __name__ == "__main__":
     texts = load_texts()

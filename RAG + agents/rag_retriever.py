@@ -35,7 +35,7 @@ class RAGRetriever:
         response = client.embeddings.create(input=text, model=EMBEDDING_MODEL)
         return np.array(response.data[0].embedding, dtype='float32')
 
-    def search(self, query: str, k: int = 5) -> str:
+    def search(self, query: str, k: int = 10) -> str:
         """
         Takes a user query, embeds it, searches the FAISS index for the
         top k most relevant text chunks, and returns them as a single string.

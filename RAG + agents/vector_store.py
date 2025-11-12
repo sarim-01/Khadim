@@ -5,7 +5,6 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
-# We need the data loader from your other file
 from search_agent import load_texts
 
 # --- CONFIGURATION ---
@@ -28,11 +27,9 @@ def create_and_save_vector_store(texts: list[str]):
 
     print(f"Starting embedding process for {len(texts)} text blocks using '{EMBEDDING_MODEL}' in a single batch...")
     
-    # --- THIS IS THE FIX ---
     # 1. Create embeddings for all text blocks in one API call
     response = client.embeddings.create(input=texts, model=EMBEDDING_MODEL)
     embeddings = np.array([item.embedding for item in response.data], dtype='float32')
-    # --- END OF FIX ---
 
     print("Embeddings created successfully.")
     
@@ -54,7 +51,6 @@ def create_and_save_vector_store(texts: list[str]):
     
     print("\nVector store build process complete!")
 
-# --- MAIN EXECUTION ---
 
 if __name__ == "__main__":
     print("Loading menu and deal information from the database...")

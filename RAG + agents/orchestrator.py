@@ -1,6 +1,4 @@
-# app.py
 # Docker khol kar run following command on the terminal in Vs code docker run -d --name redis -p 6379:6379 redis
-
 
 import os
 import uuid
@@ -10,7 +8,7 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 
-from search_agent import load_texts
+from search_agent import load_texts, SearchAgent
 from conversation_manager import ConversationManager
 from database_connection import DatabaseConnection
 from chat_agent import get_ai_response 
@@ -21,45 +19,7 @@ from config import AGENT_TASKS_CHANNEL, RESPONSE_CHANNEL_PREFIX
 
 load_dotenv()
 
-# --- Simple Search Agent (for matching menu items) ---
-class SearchAgent:
-    def __init__(self):
-        self.blocks = load_texts()
-
-    def search(self, term: str):
-        term_lower = term.lower()
-        hits = []
-        for block in self.blocks:
-            if term_lower in block.lower():
-                lines = block.splitlines()
-                entry = {"raw": block}
-                name_line = lines[0]
-                if "Menu Item:" in name_line:
-                    entry["type"] = "menu_item"
-                    entry["item_name"] = name_line.split(":", 1)[1].strip()
-                    entry["item_id"] = abs(hash(entry["item_name"])) % 1000
-                elif "Deal:" in name_line:
-                    entry["type"] = "deal"
-                    entry["item_name"] = name_line.split(":", 1)[1].strip()
-                    entry["deal_id"] = abs(hash(entry["item_name"])) % 1000
-                price = 0.0
-                for ln in lines:
-                    if ln.lower().startswith("price:"):
-                        try:
-                            price = float(ln.split(":", 1)[1].strip())
-                        except:
-                            pass
-                        break
-                entry["price"] = price
-                hits.append(entry)
-        return hits
-
-    def get_context_blocks(self):
-        return "\n\n---\n\n".join(self.blocks)
-
-# ----------------------------------------------------
-# Streamlit Page Setup
-# ----------------------------------------------------
+# --- Streamlit Page Setup ---
 st.set_page_config(page_title="Khadim Bot", page_icon="🍽️")
 st.title("🍴 Khadim Restaurant Chatbot")
 

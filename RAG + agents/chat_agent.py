@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 _api = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Define the "tools" (our Python functions) that the AI can use.
+# Define the "tools"
 tools = [
     {
         "type": "function",
@@ -54,7 +54,7 @@ tools = [
     },
 ]
 
-# PROMPT : FOR THE "CONVERSATIONAL" BRAIN (get_llm_response)
+# PROMPT : FOR THE "CONVERSATIONAL" BRAIN
 SYSTEM_PROMPT = """
 You are an experienced, friendly, and attentive restaurant waiter AI assistant for a multi-cuisine restaurant serving Fast Food, Chinese, Pakistani/Desi, and BBQ. Your role is to help customers explore the menu, recommend dishes, and provide details about deals.
 
@@ -69,7 +69,7 @@ You are an experienced, friendly, and attentive restaurant waiter AI assistant f
 - ONLY discuss menu items and deals from the provided context
 - NEVER mention chef names or staff details
 - ALWAYS include the exact price for EVERY menu item you mention (e.g., "Chicken Burger (Rs. 375)")
-- ALWAYS include the exact quantity/serving size for EVERY item you mention (e.g., "8 pieces (120g)" for nuggets)
+- ALWAYS include the exact quantity and serving size for EVERY item you mention (e.g., "8 pieces (120g)" for nuggets)
 - Double-check quantities and prices against the context before responding
 - When listing multiple items, include BOTH price and quantity for each item
 - When describing deals, list every included item with its quantity
@@ -130,12 +130,11 @@ def get_ai_response(user_input: str, conversation_history: list, menu_context: s
     messages.extend(conversation_history)
     messages.append({"role": "user", "content": user_input})
 
-    # Make one single, smart call to the API
     response = _api.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
         tools=tools,
-        tool_choice="auto",  # Let the model decide whether to use a tool or not
+        tool_choice="auto",  
     )
     
     return response.choices[0].message
