@@ -1,39 +1,58 @@
 @echo off
-title Khadim Multi-Agent System Launcher (LangChain Version)
+title Khadim Multi-Agent System Launcher
 
-echo ===================================================
-echo  Khadim Restaurant - Multi-Agent System Launcher
-echo  (LangChain Version)
-echo ===================================================
-echo.
-echo Checking for virtual environment at '.\venv\'...
+echo ================================================
+echo       K H A A D I M   -  Multi Agent System
+echo ================================================
 echo.
 
+REM -----------------------------------------------
+REM CHECK VENV EXISTS
+REM -----------------------------------------------
+echo Checking for virtual environment...
 IF NOT EXIST "venv\Scripts\activate.bat" (
-    echo ERROR: Virtual environment not found at '.\venv\Scripts\activate.bat'
-    echo Please make sure your 'venv' folder is located in the *same* directory
-    echo as this batch script.
-    echo.
-    echo Your current directory: %cd%
-    echo Expected venv path: %cd%\venv
-    echo.
+    echo ERROR: venv not found at: %cd%\venv
+    echo Make sure you created venv using:
+    echo python -m venv venv
     pause
     exit /b
 )
 
 echo Virtual environment found!
 echo.
-echo [1/3] Starting Cart Agent (LangChain) in a new window...
-START "Cart Agent (LangChain)" cmd /k "call venv\Scripts\activate.bat && python cart_agent.py"
 
-echo [2/3] Starting Order Agent in a new window...
+REM -----------------------------------------------
+REM START CART AGENT
+REM -----------------------------------------------
+echo [1/5] Starting Cart Agent...
+START "Cart Agent" cmd /k "call venv\Scripts\activate.bat && python cart_agent.py"
+
+REM -----------------------------------------------
+REM START ORDER AGENT
+REM -----------------------------------------------
+echo [2/5] Starting Order Agent...
 START "Order Agent" cmd /k "call venv\Scripts\activate.bat && python order_agent.py"
 
-echo [3/3] Starting Streamlit Orchestrator...
-START "Streamlit Orchestrator" cmd /c "call venv\Scripts\activate.bat && streamlit run orchestrator.py"
+REM -----------------------------------------------
+REM START KITCHEN AGENT
+REM -----------------------------------------------
+echo [3/5] Starting Kitchen Agent...
+START "Kitchen Agent" cmd /k "call venv\Scripts\activate.bat && python kitchen_agent.py"
+
+REM -----------------------------------------------
+REM START UPSELL AGENT (This was missing!)
+REM -----------------------------------------------
+echo [4/5] Starting Upsell Agent...
+START "Upsell Agent" cmd /k "call venv\Scripts\activate.bat && python upsell_agent.py"
+
+REM -----------------------------------------------
+REM START STREAMLIT ORCHESTRATOR
+REM -----------------------------------------------
+echo [5/5] Starting Orchestrator...
+START "Orchestrator" cmd /k "call venv\Scripts\activate.bat && python -m streamlit run orchestrator.py"
 
 echo.
-echo All processes have been launched in separate windows.
-echo LangChain-powered agents are now running!
+echo All 5 agents launched in separate windows.
+echo You can now open http://localhost:8501 to chat.
 echo.
 pause
