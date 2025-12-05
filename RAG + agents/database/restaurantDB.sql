@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS menu_item_chefs CASCADE;
 DROP TABLE IF EXISTS deal CASCADE;
 DROP TABLE IF EXISTS menu_item CASCADE;
 DROP TABLE IF EXISTS chef CASCADE;
+DROP TABLE IF EXISTS kitchen_tasks CASCADE;
 
 -- Also drop agent-created tables
 DROP TABLE IF EXISTS cart_items CASCADE;
@@ -62,6 +63,24 @@ CREATE TABLE menu_item_chefs (
     chef_id INT REFERENCES chef(cheff_id),
     PRIMARY KEY (menu_item_id, chef_id)
 );
+
+CREATE TABLE IF NOT EXISTS kitchen_tasks (
+    task_id TEXT PRIMARY KEY,
+    order_id INT NOT NULL,
+    menu_item_id INT,
+    item_name TEXT,
+    qty INT,
+    station TEXT,
+    assigned_chef TEXT,
+    estimated_minutes INT,
+    status TEXT DEFAULT 'QUEUED',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+select * from kitchen_tasks
+select * from cart
+select * from cart_items
 
 ----------------------
 -- adding cheffs
@@ -529,4 +548,6 @@ FROM menu_item
 WHERE item_category = 'drink';
 
 
--- DROP TABLE cart_items;
+select * from cart_items
+select * from cart
+select * from orders
