@@ -12,14 +12,18 @@ def format_menu_item(row):
     text = f"Menu Item: {row.item_name}"
     if pd.notna(row.item_description):
         text += f"\nDescription: {row.item_description}"
+    if pd.notna(row.item_cuisine):
+        text += f"\nCuisine: {row.item_cuisine}"
+    if pd.notna(row.item_category):
+        text += f"\nCategory: {row.item_category}"
     if pd.notna(row.item_price):
         text += f"\nPrice: {row.item_price}"
     if pd.notna(row.serving_size):
-        text += f"\nServing Size: {row.serving_size}"
+        text += f"\nServes: {row.serving_size} people"
     if pd.notna(row.quantity_description):
-        text += f"\nQuantity Details: {row.quantity_description}"
+        text += f"\nPortion Quantity: {row.quantity_description}"
     if pd.notna(row.prep_time_minutes):
-        text += f"\nPrep Time: {row.prep_time_minutes} minutes"
+        text += f"\nPrep Time (MINUTES): {row.prep_time_minutes}"
     return text
 
 def format_deal(row):
@@ -45,6 +49,8 @@ def load_texts():
           mi.item_id,
           mi.item_name,
           mi.item_description,
+          mi.item_cuisine,
+          mi.item_category,
           mi.item_price,
           mi.serving_size,
           mi.quantity_description,

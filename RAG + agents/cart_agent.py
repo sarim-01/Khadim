@@ -89,14 +89,20 @@ class CartTools:
 
     def remove_item(self, cart_id: str, item_name: str) -> Dict:
         """Removes an item from the database."""
+        rows_deleted = 0
         with self.db.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     DELETE FROM cart_items 
                     WHERE cart_id = %s AND item_name ILIKE %s
                 """, (cart_id, f"%{item_name}%"))
+                rows_deleted = cur.rowcount
                 conn.commit()
-        return {'success': True, 'message': f"Removed {item_name}"}
+        
+        if rows_deleted > 0:
+            return {'success': True, 'message': f"Removed {item_name}"}
+        else:
+            return {'success': False, 'message': f"Item '{item_name}' not found in your cart."}
 
     def get_cart_summary(self, cart_id: str) -> Dict:
         """Returns the cart JSON summary."""
@@ -115,7 +121,6 @@ class CartTools:
                         "quantity": i['quantity'],
                         "unit_price": float(i['unit_price']),
                         "total_price": t_price,
-                        # Need these for Order Agent later:
                         "item_id": i['item_id'], 
                         "item_type": i['item_type']
                     })
