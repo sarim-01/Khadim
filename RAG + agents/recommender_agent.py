@@ -194,6 +194,8 @@ def run_recommender_agent():
             payload = data.get('payload', {})
             response_channel = data.get('response_channel')
 
+            print(f"📥 Received Command: {command} with payload: {payload}")
+
             result = {}
 
             if command == 'get_recommendation':
