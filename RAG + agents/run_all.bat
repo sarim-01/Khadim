@@ -46,13 +46,19 @@ echo [4/5] Starting Upsell Agent...
 START "Upsell Agent" cmd /k "call venv\Scripts\activate.bat && python upsell_agent.py"
 
 REM -----------------------------------------------
+REM START Recommender Agent (This was missing!)
+REM -----------------------------------------------
+echo [5/6] Starting Recommender Agent...
+START "Recommender Agent" cmd /k "call venv\Scripts\activate.bat && python recommender_agent.py"
+
+REM -----------------------------------------------
 REM START STREAMLIT ORCHESTRATOR
 REM -----------------------------------------------
-echo [5/5] Starting Orchestrator...
+echo [6/6] Starting Orchestrator...
 START "Orchestrator" cmd /k "call venv\Scripts\activate.bat && python -m streamlit run orchestrator.py"
 
 echo.
-echo All 5 agents launched in separate windows.
+echo All 6 agents launched in separate windows.
 echo You can now open http://localhost:8501 to chat.
 echo.
 pause

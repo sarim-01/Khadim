@@ -411,18 +411,83 @@ if submitted and user_input:
                 else:
                     responses.append("Couldn't check weather right now.")
 
-            # --- ADD TO CART ---
+            elif function_name == "search_menu":
+                query = args.get("query", "")
+                hits = agent_search.search(query)
+                if hits:
+                    responses.append(f"Here is what I found for '{query}':")
+                    for hit in hits[:3]: # Limit to top 3
+                        name = hit.get('item_name')
+                        price = hit.get('price')
+                        responses.append(f"- **{name}**: Rs. {price}")
+                else:
+                    responses.append(f"I searched the menu but couldn't find anything matching '{query}'.")
+
+            # --- ADD TO CART (With Recommender Integration) ---
             elif function_name == "add_to_cart":
                 item_name = args.get("item_name")
                 qty = int(args.get("quantity", 1))
                 
                 hits = agent_search.search(item_name)
-                if not hits and " " in item_name: hits = agent_search.search(item_name.replace(" ", ""))
+                # Fuzzy match cleanup
+                if not hits and " " in item_name: 
+                    hits = agent_search.search(item_name.replace(" ", ""))
                 
                 if hits:
-                    payload = {'cart_id': st.session_state.cart_id, 'item_data': hits[0], 'quantity': qty}
+                    item_data = hits[0]
+                    
+                    # 1. Add item to cart (Cart Agent)
+                    payload = {
+                        'cart_id': st.session_state.cart_id, 
+                        'item_data': item_data, 
+                        'quantity': qty
+                    }
                     result = send_task_and_get_response('cart', 'add_item', payload)
-                    responses.append(result.get('message', f"Added {item_name}."))
+                    
+                    # Base success message
+                    final_msg = result.get('message', f"Added {item_name}.")
+                    
+                    # --- LOGIC CHANGE HERE: SMART TRIGGER CHECK ---
+                    # Only trigger recommender if the item added is a MAIN course or a DEAL.
+                    # We skip it for breads, drinks, starters, sides to avoid loops.
+                    
+                    item_category = item_data.get('item_category', '').lower()
+                    item_type = item_data.get('type', 'menu_item') # 'deal' or 'menu_item'
+
+                    trigger_recommender = False
+                    # If it's a deal, always trigger
+                    if item_type == 'deal':
+                         trigger_recommender = True
+                    # If it's an individual item, only trigger for 'main' dishes
+                    elif item_category == 'main':
+                         trigger_recommender = True
+
+                    if trigger_recommender:
+                        # 2. GET RECOMMENDATION (Recommender Agent) 
+                        # We need the current cart list to avoid duplicate suggestions
+                        cart_summary = send_task_and_get_response('cart', 'get_cart_summary', {'cart_id': st.session_state.cart_id})
+                        
+                        current_items_list = []
+                        if cart_summary.get('success') and 'items' in cart_summary:
+                            current_items_list = [it['item_name'] for it in cart_summary['items']]
+                        
+                        # Ask the Recommender
+                        rec_res = send_task_and_get_response(
+                            'recommender', 
+                            'get_recommendation', 
+                            {
+                                'last_item_name': item_data['item_name'], 
+                                'current_cart_items': current_items_list
+                            }
+                        )
+                        
+                        if rec_res.get('success'):
+                            rec_item = rec_res['recommended_item']
+                            # Append the recommendation to the bot's response
+                            final_msg += f"\n\n💡 **Suggestion:** Would you like to add **{rec_item}**? {rec_res['reason']}"
+                    # --- END OF LOGIC CHANGE ---
+
+                    responses.append(final_msg)
                     st.session_state.force_refresh = True
                 else:
                     responses.append(f"I couldn't find '{item_name}' on the menu.")
