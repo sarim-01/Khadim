@@ -334,7 +334,7 @@ with st.sidebar:
                     st.success("Order Sent!")
                     
                     # Sync with Chat
-                    st.session_state.conv_mgr.add_message("assistant", f"✅ **(Sidebar Action)** {msg}\n\nI have started a new empty cart for you.")
+                    st.session_state.conv_mgr.add_message("assistant", f"{msg}\n\nI have started a new empty cart for you.")
                     
                     # Reset Cart
                     new_cart_id = str(uuid.uuid4())
@@ -375,6 +375,35 @@ with st.form("chat_form", clear_on_submit=True):
 # ----------------------------------------------------
 if submitted and user_input:
     conv_mgr = st.session_state.conv_mgr
+
+    # --- [INSERT THIS BLOCK] START ---
+    # Handle "Add this deal" for Custom Deals
+    if "last_custom_deal" in st.session_state and "add" in user_input.lower() and "deal" in user_input.lower():
+        items_to_add = st.session_state.last_custom_deal
+        
+        with st.spinner("Adding custom deal items to cart..."):
+            for item in items_to_add:
+                # Mark item as coming from custom deal to skip recommender
+                item['from_custom_deal'] = True
+                payload = {
+                    'cart_id': st.session_state.cart_id,
+                    'item_data': item, # Contains the item_id and price
+                    'quantity': item.get('quantity', 1)
+                }
+                # We use the standard Cart Agent to add items one by one
+                send_task_and_get_response('cart', 'add_item', payload)
+            
+        bot_response = "🎉 I've added the custom deal to your cart! You can say 'show cart' to verify."
+        
+        # Clear the state so we don't add it again by mistake
+        del st.session_state.last_custom_deal
+        
+        # Add messages to history and stop processing
+        conv_mgr.add_message("user", user_input)
+        conv_mgr.add_message("assistant", bot_response)
+        st.rerun()
+    # --- [INSERT THIS BLOCK] END ---
+
     agent_search = st.session_state.search_agent
     rag = st.session_state.rag_retriever
 
@@ -411,30 +440,81 @@ if submitted and user_input:
                 else:
                     responses.append("Couldn't check weather right now.")
 
+            # --- 2. SEARCH MENU (NOW SEMANTIC / RAG) ---
             elif function_name == "search_menu":
                 query = args.get("query", "")
-                hits = agent_search.search(query)
-                if hits:
-                    responses.append(f"Here is what I found for '{query}':")
-                    for hit in hits[:3]: # Limit to top 3
-                        name = hit.get('item_name')
-                        price = hit.get('price')
-                        responses.append(f"- **{name}**: Rs. {price}")
+                
+                rag_results = rag.search(query, k=5)
+                
+                if rag_results:
+                    responses.append(f"Here is what I found for {query}:\n\n{rag_results}")
                 else:
                     responses.append(f"I searched the menu but couldn't find anything matching '{query}'.")
+
+            elif function_name == "create_custom_deal":
+                # Get the requirement text from the LLM
+                user_req = args.get("user_requirement")
+                
+                print(f"[ORCHESTRATOR] Calling deal agent with: {user_req}")
+                
+                # Send to Custom Deal Agent via Redis
+                result = send_task_and_get_response(
+                    "deal_agent", 
+                    "create_custom_deal", 
+                    {"user_query": user_req}
+                )
+                
+                print(f"[ORCHESTRATOR] Deal agent response: {result}")
+                
+                if result.get("success"):
+                    msg = result.get("message")
+                    
+                    # Store the items in Session State!
+                    # This allows the "Follow-up Handler" (Step 1) to find them later.
+                    deal_data = result.get("deal_data", {})
+                    st.session_state.last_custom_deal = deal_data.get("items", [])
+                    
+                    msg += "\n\n👉 **just say add if you want to buy it!**"
+                    responses.append(msg)
+                else:
+                    error_msg = result.get("message", "Unknown error")
+                    print(f"[ORCHESTRATOR] Deal agent failed: {error_msg}")
+                    responses.append(f"I couldn't generate a custom deal at this time. ({error_msg})")       
 
             # --- ADD TO CART (With Recommender Integration) ---
             elif function_name == "add_to_cart":
                 item_name = args.get("item_name")
                 qty = int(args.get("quantity", 1))
                 
-                hits = agent_search.search(item_name)
-                # Fuzzy match cleanup
-                if not hits and " " in item_name: 
-                    hits = agent_search.search(item_name.replace(" ", ""))
+                # STEP 1: Use RAG for semantic search to find the item
+                rag_results = rag.search(item_name, k=3)
+                
+                # STEP 2: Extract actual item name from RAG results and use SearchAgent for exact DB lookup
+                hits = []
+                if rag_results:
+                    # Parse RAG results to extract item names
+                    for line in rag_results.split('\n'):
+                        if line.startswith("Menu Item:") or line.startswith("Deal:"):
+                            extracted_name = line.split(":", 1)[1].strip()
+                            # Try to find exact match in SearchAgent
+                            exact_hits = agent_search.search(extracted_name)
+                            if exact_hits:
+                                hits = exact_hits
+                                break
+                
+                # STEP 3: Fallback to direct SearchAgent search
+                if not hits:
+                    hits = agent_search.search(item_name)
+                    # Fuzzy match cleanup
+                    if not hits and " " in item_name: 
+                        hits = agent_search.search(item_name.replace(" ", ""))
                 
                 if hits:
                     item_data = hits[0]
+                    
+                    # Ensure proper type field
+                    if "type" not in item_data or not item_data["type"]:
+                        item_data["type"] = "menu_item"  # Default to menu_item if not specified
                     
                     # 1. Add item to cart (Cart Agent)
                     payload = {
@@ -450,16 +530,21 @@ if submitted and user_input:
                     # --- LOGIC CHANGE HERE: SMART TRIGGER CHECK ---
                     # Only trigger recommender if the item added is a MAIN course or a DEAL.
                     # We skip it for breads, drinks, starters, sides to avoid loops.
+                    # Also skip if item is from a custom deal (to prevent recommending when custom deals are added)
                     
-                    item_category = item_data.get('item_category', '').lower()
-                    item_type = item_data.get('type', 'menu_item') # 'deal' or 'menu_item'
+                    item_category = item_data.get('item_category', '').lower() if item_data.get('item_category') else ''
+                    item_type = item_data.get('type', 'menu_item')  # 'deal' or 'menu_item', never None
+                    from_custom_deal = item_data.get('from_custom_deal', False)  # Check if from custom deal
 
                     trigger_recommender = False
+                    # Skip recommender if item is from a custom deal
+                    if from_custom_deal:
+                         trigger_recommender = False
                     # If it's a deal, always trigger
-                    if item_type == 'deal':
+                    elif item_type == 'deal':
                          trigger_recommender = True
                     # If it's an individual item, only trigger for 'main' dishes
-                    elif item_category == 'main':
+                    elif item_type == 'menu_item' and item_category == 'main':
                          trigger_recommender = True
 
                     if trigger_recommender:

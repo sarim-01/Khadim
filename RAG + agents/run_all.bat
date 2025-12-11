@@ -57,8 +57,14 @@ REM -----------------------------------------------
 echo [6/6] Starting Orchestrator...
 START "Orchestrator" cmd /k "call venv\Scripts\activate.bat && python -m streamlit run orchestrator.py"
 
+REM -----------------------------------------------
+REM START CUSTOM DEAL AGENT
+REM -----------------------------------------------
+echo [7/7] Starting Custom Deal Agent...
+START "Custom Deal Agent" cmd /k "call venv\Scripts\activate.bat && python custom_deal_agent.py"
+
 echo.
-echo All 6 agents launched in separate windows.
+echo All 7 agents launched in separate windows.
 echo You can now open http://localhost:8501 to chat.
 echo.
 pause

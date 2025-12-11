@@ -1,5 +1,6 @@
 ﻿import os
 import json
+import requests
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool
@@ -91,12 +92,9 @@ def weather_upsell(city: str = "Islamabad") -> str:
     NOTE: This is a direct check. The Orchestrator handles the actual 'Upsell Agent' Redis call if needed,
     but this tool allows the Chat Agent to be aware of weather context directly if asked.
     """
-    if not requests:
-        return "Weather check unavailable (requests library missing)."
-        
     API_KEY = os.getenv("OPENWEATHER_KEY")
     if not API_KEY:
-        return "Weather info unavailable (Key missing)."
+        return "Weather info unavailable (API Key missing)."
 
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}&units=metric"
@@ -114,7 +112,16 @@ def weather_upsell(city: str = "Islamabad") -> str:
             
         return f"Weather is mild ({temp}°C) — suggest our popular Zinger Burger or Club Sandwich."
     except Exception as e:
-        return "Could not fetch weather data."
+        return f"Could not fetch weather data: {str(e)}"
+
+@tool
+def create_custom_deal(user_requirement: str) -> str:
+    """
+    Creates a customized deal based on user requirements.
+    Use this when user asks for a 'custom deal', 'make me a deal', or combines specific items like 'Biryani and Burger deal'.
+    Input: The user's full requirement text.
+    """
+    return "success"
 
 # --- 2. TOOL REGISTRY (maps tool names to functions) ---
 tool_registry = {
@@ -124,7 +131,8 @@ tool_registry = {
     "remove_from_cart": remove_from_cart,
     "show_cart": show_cart,
     "place_order": place_order, 
-    "weather_upsell": weather_upsell,    
+    "weather_upsell": weather_upsell,  
+    "create_custom_deal": create_custom_deal,   
 }
 
 # --- 3. DETAILED SYSTEM PROMPT ---
@@ -136,11 +144,39 @@ YOUR PERSONALITY:
 - Help customers make informed choices
 - Use conversational language
 
+YOUR SPECIAL POWER (CUSTOM DEALS) - CRITICAL:
+- You MUST use the create_custom_deal tool whenever users ask for custom deals!
+- TRIGGER WORDS - When you see these, ALWAYS call create_custom_deal:
+  * "custom deal"
+  * "make a deal with [items]"
+  * "create a deal"
+  * "deal for X people"
+  * "combine [items] into a deal"
+
+- MANDATORY TOOL USE CASES:
+  1. User wants specific items combined: "Make a deal with biryani and burger" → MUST call create_custom_deal
+  2. User wants deal for multiple people: "Create a 3 person deal" → MUST call create_custom_deal
+  3. User wants cuisine-based deal: "Pakistani food deal" → MUST call create_custom_deal
+  4. User asks if you make custom deals: Say YES and ask what they want, then call create_custom_deal
+
+- DO NOT just chat about making deals - ACTUALLY MAKE THEM using the tool!
+- Pass the complete user request to create_custom_deal
+
 HOW TO PRESENT MENU ITEMS:
 Never use general knowledge for menu questions
 Always check the database first via tools
-If nothing found, say "We don't have that" instead of making up alternatives
 When showing items to customers, REFORMAT the raw menu data into natural language.
+
+WHEN ITEMS AREN'T FOUND - BE CONVERSATIONAL:
+If a customer asks for something we don't have, respond like a real waiter would:
+- DON'T just say "not found" or show unrelated items
+- DO explain kindly and offer similar alternatives
+- Examples:
+  * User asks for "ice cream" but we only have shakes → "We don't have ice cream, but we do have delicious shakes like Strawberry Shake or Mango Shake!"
+  * User asks for "pizza" but we don't have it → "We don't serve pizza, but our Zinger Burger is very popular!"
+  * User asks for items from wrong cuisine → "We don't have Chinese food items, but I can show you our Pakistani cuisine or Continental options!"
+- Use semantic understanding - if search returns SIMILAR items, offer them intelligently
+- If search returns UNRELATED items (like "Iced Coffee" for "ice cream"), ignore them and say we don't have it
 
 EXAMPLE OF WHAT TO DO:
 Raw data: "Chicken Tikka, Marinated chicken pieces grilled on skewers, Price: 1200.0, Serves: 1 person, Portion Quantity: 200g, Prep Time: 20 minutes"
@@ -188,6 +224,23 @@ tool_descriptions = """
    
 6. place_order
    - Finalizes order.
+
+
+7. create_custom_deal | user_requirement=<text>
+   - Creates a custom discounted deal based on user specs. 
+   - Use when user wants to CREATE a deal (not search for existing deals)
+   - Examples: 
+     * "Make me a deal with biryani and burger" 
+     * "Create a 3 person deal"
+     * "I want a Pakistani food custom deal"
+   - IMPORTANT: Pass the COMPLETE user requirement, not a summary
+
+CRITICAL EXAMPLES:
+User: "Make a deal with biryani and burger"
+TOOL_CALL: create_custom_deal | user_requirement=Make a deal with biryani and burger
+
+User: "Create a custom deal for 3 people with fast food"
+TOOL_CALL: create_custom_deal | user_requirement=Create a custom deal for 3 people with fast food
 """
 
 # --- 5. EXECUTION FUNCTION WITH MANUAL TOOL CALLING ---
@@ -231,16 +284,28 @@ When you need to perform an action (search menu, add, remove, show cart, place o
 
 TOOL_CALL: search_menu | query=chicken
 TOOL_CALL: weather_upsell | city=Islamabad
-TOOL_CALL: add_to_cart | item_name=Chicken Tikka | quantity=2
-TOOL_CALL: remove_from_cart | item_name=Chicken Tikka
-TOOL_CALL: show_cart
-TOOL_CALL: place_order
+- "deal for X people"
 
-Then provide your friendly response BEFORE the TOOL_CALL line.
+CONTEXT-AWARE TRIGGERING:
+- If you previously asked "What items would you like in your deal?" and user responds with items → CALL create_custom_deal
+- If conversation is about custom deals and user provides specifications → CALL create_custom_deal
+- Look at conversation history - if discussing custom deals, user's response is the requirement
 
-Example:
-Great! Let me add that for you.
-TOOL_CALL: add_to_cart | item_name=Chicken Tikka | quantity=1
+EXAMPLES (YOU MUST FOLLOW THIS PATTERN):
+
+User: "make a deal with biryani and burger"
+Response: I'll create a special custom deal for you with biryani and burger!
+TOOL_CALL: create_custom_deal | user_requirement=make a deal with biryani and burger
+
+User: "create a 3 person deal"  
+Response: Great! I'll create a custom deal for 3 people.
+TOOL_CALL: create_custom_deal | user_requirement=create a 3 person deal
+
+User: "can you make custom deals?"
+Bot: "Yes! I can create custom deals. What items would you like in your deal?"
+User: "biryani and a burger"
+Response: Perfect! Let me create that custom deal for you.
+TOOL_CALL: create_custom_deal | user_requirement=biryani and a burger
 
 IMPORTANT: The orchestrator will execute these tool calls and update the database. Never execute tools yourself - just indicate what tool to use.
 """

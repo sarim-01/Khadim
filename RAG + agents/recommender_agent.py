@@ -28,11 +28,6 @@ class RecommendationEngine:
             "fish fillet sandwich": ["Fries", "Cola", "Onion Rings", "Lemonade"],
             "sandwich": ["Fries", "Cola", "Iced Coffee"],
             
-            "fries": ["Cola", "Chicken Nuggets", "Lemonade", "Cheeseburger"],
-            "loaded fries": ["Cola", "Lemonade", "Zinger Burger"],
-            "chicken nuggets": ["Fries", "Cola", "Loaded Fries"],
-            "onion rings": ["Cola", "Cheeseburger", "Lemonade"],
-            
             # ===== DESI CUISINE PAIRINGS =====
             "chicken karahi": ["Naan", "Garlic Naan", "Roti", "Mint Margarita", "Cola"],
             "karahi": ["Naan", "Garlic Naan", "Roti", "Mint Margarita"],
@@ -83,13 +78,8 @@ class RecommendationEngine:
             
             "egg fried rice": ["Chicken Manchurian", "Kung Pao Chicken", "Sweet and Sour Chicken", "Cola"],
             
-            "vegetable spring rolls": ["Hot and Sour Soup", "Chicken Chow Mein", "Cola"],
-            "spring rolls": ["Hot and Sour Soup", "Cola"],
-            
             "hot and sour soup": ["Vegetable Spring Rolls", "Chicken Chow Mein", "Fish Crackers", "Green Tea"],
             "soup": ["Vegetable Spring Rolls", "Fish Crackers", "Green Tea"],
-            
-            "fish crackers": ["Hot and Sour Soup", "Cola", "Green Tea"],
             
             # ===== BBQ CUISINE PAIRINGS =====
             "chicken tikka": ["Naan", "Paratha", "Mint Margarita", "Cola", "Garlic Naan"],
@@ -106,22 +96,6 @@ class RecommendationEngine:
             
             "grilled fish": ["Naan", "Lemonade", "Mint Margarita", "Paratha"],
             "grilled": ["Naan", "Paratha", "Mint Margarita"],
-            
-            # ===== DRINKS PAIRINGS =====
-            "cola": ["Fries", "Chicken Nuggets", "Onion Rings"],
-            "lemonade": ["Fries", "Chicken Burger", "Samosa Platter"],
-            "mint margarita": ["Chicken Tikka", "Chicken Karahi", "Beef Boti"],
-            "green tea": ["Vegetable Spring Rolls", "Hot and Sour Soup", "Samosa Platter"],
-            "chai": ["Samosa Platter", "Aloo Paratha", "Paratha"],
-            "iced coffee": ["Club Sandwich", "Chicken Burger", "Fries"],
-            "strawberry shake": ["Cheeseburger", "Fries", "Chicken Nuggets"],
-            "orange juice": ["Club Sandwich", "Veggie Burger", "Samosa Platter"],
-            
-            # ===== BREAD PAIRINGS =====
-            "naan": ["Chicken Karahi", "Chicken Handi", "Nihari", "Chicken Tikka"],
-            "garlic naan": ["Chicken Karahi", "Palak Paneer", "Beef Boti"],
-            "roti": ["Chicken Karahi", "Daal Chawal", "Palak Paneer"],
-            "chapatti": ["Daal Chawal", "Palak Paneer"],
         }
         
         # Generic Fallbacks if no specific rule matches
