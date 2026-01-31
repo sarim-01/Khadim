@@ -376,10 +376,51 @@ with st.form("chat_form", clear_on_submit=True):
 if submitted and user_input:
     conv_mgr = st.session_state.conv_mgr
 
+    # --- HANDLE AFFIRMATIVE RESPONSE TO RECOMMENDATIONS ---
+    # Check if user is saying "yes" to a previous recommendation
+    affirmative_words = ["yes", "sure", "okay", "ok", "yeah", "yep", "add it", "add that", "sounds good"]
+    user_lower = user_input.lower().strip()
+    
+    if "last_recommendation" in st.session_state and any(word in user_lower for word in affirmative_words):
+        recommended_item = st.session_state.last_recommendation
+        
+        with st.spinner(f"Adding {recommended_item} to cart..."):
+            # Search for the recommended item
+            agent_search = st.session_state.search_agent
+            hits = agent_search.search(recommended_item)
+            
+            if hits:
+                item_data = hits[0]
+                if "type" not in item_data or not item_data["type"]:
+                    item_data["type"] = "menu_item"
+                
+                # Add to cart
+                payload = {
+                    'cart_id': st.session_state.cart_id,
+                    'item_data': item_data,
+                    'quantity': 1
+                }
+                result = send_task_and_get_response('cart', 'add_item', payload)
+                bot_response = result.get('message', f"Added {recommended_item} to cart!")
+            else:
+                bot_response = f"Sorry, I couldn't find {recommended_item} in our system."
+        
+        # Clear the recommendation
+        del st.session_state.last_recommendation
+        
+        # Add to conversation and refresh
+        conv_mgr.add_message("user", user_input)
+        conv_mgr.add_message("assistant", bot_response)
+        st.session_state.force_refresh = True
+        st.rerun()
+
     # --- [INSERT THIS BLOCK] START ---
     # Handle "Add this deal" for Custom Deals
     if "last_custom_deal" in st.session_state and "add" in user_input.lower() and "deal" in user_input.lower():
         items_to_add = st.session_state.last_custom_deal
+        
+        # Set global flag to disable recommendations for custom deals
+        st.session_state.adding_custom_deal = True
         
         with st.spinner("Adding custom deal items to cart..."):
             for item in items_to_add:
@@ -395,8 +436,9 @@ if submitted and user_input:
             
         bot_response = "🎉 I've added the custom deal to your cart! You can say 'show cart' to verify."
         
-        # Clear the state so we don't add it again by mistake
+        # Clear the flags and state
         del st.session_state.last_custom_deal
+        st.session_state.adding_custom_deal = False
         
         # Add messages to history and stop processing
         conv_mgr.add_message("user", user_input)
@@ -440,14 +482,37 @@ if submitted and user_input:
                 else:
                     responses.append("Couldn't check weather right now.")
 
-            # --- 2. SEARCH MENU (NOW SEMANTIC / RAG) ---
+            # --- 2. SEARCH MENU (NOW SEMANTIC / RAG WITH AI FORMATTING) ---
             elif function_name == "search_menu":
                 query = args.get("query", "")
                 
-                rag_results = rag.search(query, k=5)
+                # Get RAG results with more items (AI will filter intelligently)
+                rag_results = rag.search(query, k=10)
                 
                 if rag_results:
-                    responses.append(f"Here is what I found for {query}:\n\n{rag_results}")
+                    # Instead of showing raw results, ask AI to format them nicely
+                    formatting_prompt = f"""Based on the user's query "{query}", here are the menu items I found:
+
+{rag_results}
+
+Please present these items to the customer in a natural, friendly way. Follow these rules:
+- Show only the MOST relevant items (usually 1-3, maximum 5 if all are highly relevant)
+- Use conversational language, not database format
+- If only 1 item matches perfectly, show only that one
+- If nothing truly matches, politely say we don't have it and suggest alternatives
+- Format prices as Rs. X
+- Make it sound like a real waiter describing the food
+- Be concise but helpful"""
+
+                    # Get AI to format the response naturally
+                    formatted_response = get_ai_response(
+                        formatting_prompt, 
+                        conv_mgr.get_history()[-4:],  # Limited context to avoid confusion
+                        ""
+                    )
+                    
+                    # Use AI's formatted response instead of raw data
+                    responses.append(formatted_response.content if hasattr(formatted_response, 'content') else str(formatted_response))
                 else:
                     responses.append(f"I searched the menu but couldn't find anything matching '{query}'.")
 
@@ -537,12 +602,16 @@ if submitted and user_input:
                     from_custom_deal = item_data.get('from_custom_deal', False)  # Check if from custom deal
 
                     trigger_recommender = False
+                    
+                    # NEVER trigger recommender if we're adding custom deal items
+                    if st.session_state.get('adding_custom_deal', False):
+                        trigger_recommender = False
                     # Skip recommender if item is from a custom deal
-                    if from_custom_deal:
+                    elif from_custom_deal:
                          trigger_recommender = False
-                    # If it's a deal, always trigger
+                    # If it's a deal (regular, not custom), SKIP recommender to avoid annoying users
                     elif item_type == 'deal':
-                         trigger_recommender = True
+                         trigger_recommender = False  # Changed from True to False
                     # If it's an individual item, only trigger for 'main' dishes
                     elif item_type == 'menu_item' and item_category == 'main':
                          trigger_recommender = True
@@ -568,6 +637,8 @@ if submitted and user_input:
                         
                         if rec_res.get('success'):
                             rec_item = rec_res['recommended_item']
+                            # Store recommendation in session state for follow-up
+                            st.session_state.last_recommendation = rec_item
                             # Append the recommendation to the bot's response
                             final_msg += f"\n\n💡 **Suggestion:** Would you like to add **{rec_item}**? {rec_res['reason']}"
                     # --- END OF LOGIC CHANGE ---
