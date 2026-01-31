@@ -586,4 +586,5 @@ def run_deal_agent():
         time.sleep(10)
 
 if __name__ == "__main__":
-    run_deal_agent()
+    from agent_lifecycle_manager import wrap_agent
+    wrap_agent("custom_deal", run_deal_agent)

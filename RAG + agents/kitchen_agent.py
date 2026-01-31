@@ -326,4 +326,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from agent_lifecycle_manager import wrap_agent
+    wrap_agent("kitchen", main)

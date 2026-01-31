@@ -299,4 +299,5 @@ def run_upsell_agent():
 
 
 if __name__ == "__main__":
-    run_upsell_agent()
+    from agent_lifecycle_manager import wrap_agent
+    wrap_agent("upsell", run_upsell_agent)

@@ -190,4 +190,5 @@ def run_recommender_agent():
             print(f"❌ Error in Recommender Agent: {e}")
 
 if __name__ == "__main__":
-    run_recommender_agent()
+    from agent_lifecycle_manager import wrap_agent
+    wrap_agent("recommender", run_recommender_agent)

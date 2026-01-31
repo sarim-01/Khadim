@@ -217,4 +217,5 @@ def run_cart_agent():
                 print(f"❌ Error in Cart Agent: {e}")
 
 if __name__ == "__main__":
-    run_cart_agent()
+    from agent_lifecycle_manager import wrap_agent
+    wrap_agent("cart", run_cart_agent)

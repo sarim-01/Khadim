@@ -172,4 +172,5 @@ def run_order_agent():
 
 # This starts the listener
 if __name__ == "__main__":
-    run_order_agent()
+    from agent_lifecycle_manager import wrap_agent
+    wrap_agent("order", run_order_agent)
