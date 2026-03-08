@@ -28,13 +28,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   static const double _taxRate = 0.05;
 
   @override
+
+  @override
   void initState() {
     super.initState();
 
-    // Always ensure we are using freshest server cart at checkout time
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final cart = context.read<CartProvider>();
-      await cart.sync();
+      if (cart.cartId != null) {
+        await cart.sync();
+      }
     });
   }
 
@@ -64,6 +67,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    if (_address.text.trim().length < 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter a valid delivery address.")),
+      );
+      return;
+    }
+
     if (cards.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please add a payment method.")),
@@ -71,26 +81,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    if (_placingOrder) return;
     setState(() => _placingOrder = true);
 
     try {
-      // Optional: final selected = cards[_selectedIndex];
-      // In real system you'd send payment token/pm_id. For now just place order.
+      final currentCartId = cart.cartId!;
+
       final res = await CartService.placeOrder(
+        cartId: currentCartId,
         deliveryAddress: _address.text.trim(),
         deliveryFee: _deliveryFee,
         taxRate: _taxRate,
       );
-      // Backend returns: { success, message, order_data: { total_price, items... } }
-      // Backend returns (current): { success, message, order_id, prep_time, total_price }
-      final totalNum = res["total"];
-      final total = (totalNum is num) ? totalNum.toDouble() : cart.totalPrice;
 
       final orderId = res["order_id"]?.toString();
+      final totalNum = res["total_price"] ?? res["total"];
+      final total = (totalNum is num) ? totalNum.toDouble() : cart.totalPrice;
 
-      // Reset local cart after success
-      cart.reset();
+      await cart.refreshAfterOrderSuccess();
 
       if (!mounted) return;
 
@@ -98,8 +105,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => OrderConfirmationScreen(
+            orderId: int.tryParse(orderId ?? '') ?? 0,
             orderNumber: orderId ?? _generateLocalOrderNumber(),
             totalAmount: total,
+            estimatedPrepTimeMinutes:
+            (res["estimated_prep_time_minutes"] is num)
+                ? (res["estimated_prep_time_minutes"] as num).toInt()
+                : 0,
           ),
         ),
       );
@@ -108,13 +120,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString()),
+          content: Text(_readableError(e)),
           behavior: SnackBarBehavior.floating,
         ),
       );
     } finally {
-      if (mounted) setState(() => _placingOrder = false);
+      if (mounted) {
+        setState(() => _placingOrder = false);
+      }
     }
+  }
+
+  String _readableError(Object e) {
+    final text = e.toString().toLowerCase();
+
+    if (text.contains("cart is empty")) return "Your cart is empty.";
+    if (text.contains("cart not found")) return "Your cart session expired. Please try again.";
+    if (text.contains("not active")) return "This cart is no longer active. Please try again.";
+    if (text.contains("unauthorized") || text.contains("401")) {
+      return "Your session expired. Please login again.";
+    }
+    if (text.contains("timeout")) return "Request timed out. Please try again.";
+    if (text.contains("no internet")) return "No internet connection.";
+    return "Could not place order. Please try again.";
   }
 
   // Temporary: until backend returns a real order_id
@@ -272,7 +300,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             "Total",
                             "Rs ${total.toStringAsFixed(2)}",
                             isBold: true,
-                            color: Colors.white, // <- makes total white
+                            color: theme.colorScheme.onBackground,
                           ),
                           if (cart.error != null) ...[
                             const SizedBox(height: 10),

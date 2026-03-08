@@ -12,7 +12,6 @@ import 'package:khaadim/screens/auth/splash_screen.dart';
 import 'package:khaadim/screens/auth/login_screen.dart';
 import 'package:khaadim/screens/auth/signup_screen.dart';
 import 'package:khaadim/screens/navigation/main_screen.dart';
-import 'package:khaadim/screens/discover/home_screen.dart';
 import 'package:khaadim/screens/menu/menu_screen.dart';
 import 'package:khaadim/screens/discover/offer_screen.dart';
 import 'package:khaadim/screens/profile/profile_screen.dart';
@@ -64,11 +63,6 @@ class KhaadimApp extends StatelessWidget {
         '/add_payment': (context) => const AddPaymentScreen(),
         '/order_history': (context) => const OrderHistoryScreen(),
         '/ttsTest': (context) => const TestUrduTTSPage(),
-
-        '/orderConfirmation': (context) => const OrderConfirmationScreen(
-          orderNumber: 'N/A',
-          totalAmount: 0.0,
-        ),
       },
 
       onUnknownRoute: (settings) {

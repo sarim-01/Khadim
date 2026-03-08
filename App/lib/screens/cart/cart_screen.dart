@@ -179,11 +179,11 @@ class _CartScreenState extends State<CartScreen> {
                         "Total",
                         "Rs ${total.toStringAsFixed(2)}",
                         isBold: true,
-                        color: Colors.white,
+                        color: theme.colorScheme.onSurface,
                       ),
                       const SizedBox(height: 10),
                       ElevatedButton(
-                        onPressed: cart.isSyncing
+                        onPressed: (cart.isSyncing || cart.cartId == null || cart.items.isEmpty)
                             ? null
                             : () {
                           Navigator.push(

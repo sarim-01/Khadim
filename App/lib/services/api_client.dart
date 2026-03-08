@@ -148,18 +148,20 @@ class ApiClient {
         return _handleResponse(res);
       }
     } on TimeoutException {
-      throw const ApiException(statusCode: -1, message: 'Request timeout');
-    } on SocketException {
-      throw const ApiException(statusCode: -2, message: 'No internet connection');
-    } on HttpException {
-      throw const ApiException(statusCode: -3, message: 'HTTP error');
-    } on FormatException {
-      throw const ApiException(statusCode: -4, message: 'Bad response format');
-    } on IOException {
-      throw const ApiException(statusCode: -5, message: 'Network I/O error');
-    } catch (e) {
-      throw ApiException(statusCode: -9, message: 'Unexpected error', body: e.toString());
-    }
+  throw const ApiException(statusCode: -1, message: 'Request timeout');
+} on SocketException {
+throw const ApiException(statusCode: -2, message: 'No internet connection');
+} on HttpException {
+throw const ApiException(statusCode: -3, message: 'HTTP error');
+} on FormatException {
+throw const ApiException(statusCode: -4, message: 'Bad response format');
+} on IOException {
+throw const ApiException(statusCode: -5, message: 'Network I/O error');
+} on ApiException {
+rethrow;
+} catch (e) {
+throw ApiException(statusCode: -9, message: 'Unexpected error', body: e.toString());
+}
 
     // Safety fallback (should never hit)
     throw const ApiException(statusCode: -9, message: 'Unexpected error');

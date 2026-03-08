@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:khaadim/themes/app_theme.dart';
 import 'package:khaadim/utils/app_images.dart';
 import 'package:khaadim/screens/navigation/main_screen.dart';
 import 'order_tracking_screen.dart';
 
 class OrderConfirmationScreen extends StatelessWidget {
+  final int orderId;
   final String orderNumber;
   final double totalAmount;
+  final int estimatedPrepTimeMinutes;
 
   const OrderConfirmationScreen({
     super.key,
+    required this.orderId,
     required this.orderNumber,
     required this.totalAmount,
+    required this.estimatedPrepTimeMinutes,
   });
 
   Widget _buildInfoText(
@@ -25,14 +28,14 @@ class OrderConfirmationScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: theme.hintColor)),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor),
+          ),
           Text(
             value,
             style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight:
-              isHighlight ? FontWeight.bold : FontWeight.w500,
+              fontWeight: isHighlight ? FontWeight.bold : FontWeight.w500,
               color: isHighlight
                   ? theme.colorScheme.primary
                   : theme.colorScheme.onBackground,
@@ -41,6 +44,13 @@ class OrderConfirmationScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _etaText() {
+    if (estimatedPrepTimeMinutes <= 0) {
+      return "Preparing soon";
+    }
+    return "$estimatedPrepTimeMinutes mins";
   }
 
   @override
@@ -57,10 +67,8 @@ class OrderConfirmationScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ////// Success icon //////
                 Image.asset(AppImages.confirm, height: 100, width: 100),
                 const SizedBox(height: 24),
-
                 Text(
                   'Order Confirmed!',
                   style: theme.textTheme.headlineSmall?.copyWith(
@@ -72,16 +80,13 @@ class OrderConfirmationScreen extends StatelessWidget {
                 Text(
                   'Your order has been successfully placed',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.hintColor),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.hintColor,
+                  ),
                 ),
-
                 const SizedBox(height: 32),
-
-                ////// Order Details Card //////
                 Container(
-                  padding:
-                  const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
                   decoration: BoxDecoration(
                     color: theme.cardColor,
                     borderRadius: BorderRadius.circular(12),
@@ -98,8 +103,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                     children: [
                       _buildInfoText('Order Number', '#$orderNumber', theme),
                       const Divider(),
-                      _buildInfoText(
-                          'Estimated Delivery', '30–40 mins', theme),
+                      _buildInfoText('Estimated Prep Time', _etaText(), theme),
                       const Divider(),
                       _buildInfoText(
                         'Total Amount',
@@ -110,18 +114,17 @@ class OrderConfirmationScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 40),
-
-                ////// Track Order Button //////
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: orderId <= 0
+                        ? null
+                        : () {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const OrderTrackingScreen(),
+                          builder: (_) => OrderTrackingScreen(orderId: orderId),
                         ),
                       );
                     },
@@ -131,16 +134,12 @@ class OrderConfirmationScreen extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      padding:
-                      const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('Track Order'),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
-                ////// Back to Home Button //////
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
@@ -157,8 +156,7 @@ class OrderConfirmationScreen extends StatelessWidget {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      padding:
-                      const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('Back to Home'),
                   ),

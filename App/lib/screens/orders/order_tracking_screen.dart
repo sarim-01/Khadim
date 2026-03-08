@@ -1,9 +1,123 @@
 import 'package:flutter/material.dart';
-import 'package:khaadim/themes/app_theme.dart';
-import 'package:khaadim/screens/support/feedback_screen.dart';
+import 'package:khaadim/models/order.dart';
+import 'package:khaadim/screens/orders/order_history_screen.dart';
+import 'package:khaadim/services/order_service.dart';
 
-class OrderTrackingScreen extends StatelessWidget {
-  const OrderTrackingScreen({super.key});
+class OrderTrackingScreen extends StatefulWidget {
+  final int orderId;
+
+  const OrderTrackingScreen({
+    super.key,
+    required this.orderId,
+  });
+
+  @override
+  State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
+}
+
+class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
+  bool _loading = true;
+  String? _error;
+  Order? _order;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrder();
+  }
+
+  Future<void> _loadOrder() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final res = await OrderService.getOrderDetail(orderId: widget.orderId);
+      final rawOrder = Map<String, dynamic>.from(res["order"] ?? {});
+      _order = Order.fromJson(rawOrder);
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  double _progressForStatus(String status) {
+    final s = status.toLowerCase();
+
+    switch (s) {
+      case 'created':
+        return 0.15;
+      case 'confirmed':
+        return 0.25;
+      case 'in_kitchen':
+        return 0.45;
+      case 'preparing':
+        return 0.65;
+      case 'ready':
+        return 0.85;
+      case 'completed':
+        return 1.0;
+      default:
+        return 0.2;
+    }
+  }
+
+  bool _isDone(String currentStatus, List<String> states) {
+    final status = currentStatus.toLowerCase();
+    return states.contains(status);
+  }
+
+  bool _isCurrent(String currentStatus, List<String> states) {
+    return states.contains(currentStatus.toLowerCase());
+  }
+
+  Widget _buildStatusRow(
+      BuildContext context, {
+        required IconData icon,
+        required String title,
+        required bool done,
+        required bool inProgress,
+      }) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme;
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        icon,
+        color: done
+            ? Colors.green
+            : inProgress
+            ? color.primary
+            : theme.hintColor,
+      ),
+      title: Text(
+        title,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w500,
+          color: done
+              ? Colors.green
+              : inProgress
+              ? color.primary
+              : theme.hintColor,
+        ),
+      ),
+      trailing: done
+          ? const Icon(Icons.check, color: Colors.green)
+          : inProgress
+          ? Text(
+        'In Progress',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: color.primary,
+        ),
+      )
+          : null,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,10 +128,12 @@ class OrderTrackingScreen extends StatelessWidget {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Track Order'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        actions: [
+          IconButton(
+            onPressed: _loading ? null : _loadOrder,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: color.primary,
@@ -25,144 +141,287 @@ class OrderTrackingScreen extends StatelessWidget {
         onPressed: () {},
         child: const Icon(Icons.mic_none_rounded),
       ),
-      body: SingleChildScrollView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      )
+          : _order == null
+          ? const Center(child: Text("Order not found"))
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            ////// Order Info Card //////
             Card(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 20,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Order #A12345',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        )),
+                    Text(
+                      'Order #${_order!.orderNumber}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 8),
-                    Text('Estimated Delivery',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.hintColor)),
+                    Text(
+                      'Estimated Prep Time',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.hintColor,
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
                         Icon(Icons.access_time,
                             color: color.primary, size: 18),
                         const SizedBox(width: 6),
-                        Text('30–40 mins',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w500,
-                              color: color.primary,
-                            )),
+                        Text(
+                          _order!.estimatedPrepTimeMinutes > 0
+                              ? '${_order!.estimatedPrepTimeMinutes} mins'
+                              : 'Updating',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                            color: color.primary,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     LinearProgressIndicator(
-                      value: 0.4,
-                      backgroundColor: color.primary.withOpacity(0.2),
+                      value: _progressForStatus(_order!.status),
+                      backgroundColor:
+                      color.primary.withOpacity(0.2),
                       color: color.primary,
                       minHeight: 4,
                     ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Status: ${_order!.status}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: color.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 20),
-
-            ////// Status Steps //////
             Card(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
                 child: Column(
                   children: [
-                    _buildStatusRow(context,
-                        icon: Icons.check_circle,
-                        title: 'Order Confirmed',
-                        done: true),
-                    _buildStatusRow(context,
-                        icon: Icons.restaurant_menu,
-                        title: 'Preparing',
-                        inProgress: true),
-                    _buildStatusRow(context,
-                        icon: Icons.delivery_dining,
-                        title: 'Out for Delivery'),
-                    _buildStatusRow(context,
-                        icon: Icons.home_filled,
-                        title: 'Delivered'),
+                    _buildStatusRow(
+                      context,
+                      icon: Icons.check_circle,
+                      title: 'Order Confirmed',
+                      done: _isDone(_order!.status, [
+                        'confirmed',
+                        'in_kitchen',
+                        'preparing',
+                        'ready',
+                        'completed'
+                      ]),
+                      inProgress: _isCurrent(_order!.status, ['confirmed']),
+                    ),
+                    _buildStatusRow(
+                      context,
+                      icon: Icons.restaurant_menu,
+                      title: 'In Kitchen',
+                      done: _isDone(_order!.status, [
+                        'in_kitchen',
+                        'preparing',
+                        'ready',
+                        'completed'
+                      ]),
+                      inProgress: _isCurrent(_order!.status, ['in_kitchen']),
+                    ),
+                    _buildStatusRow(
+                      context,
+                      icon: Icons.local_fire_department,
+                      title: 'Preparing',
+                      done: _isDone(_order!.status, [
+                        'preparing',
+                        'ready',
+                        'completed'
+                      ]),
+                      inProgress: _isCurrent(_order!.status, ['preparing']),
+                    ),
+                    _buildStatusRow(
+                      context,
+                      icon: Icons.done_all,
+                      title: 'Ready / Completed',
+                      done: _isDone(_order!.status, ['ready', 'completed']),
+                      inProgress: _isCurrent(_order!.status, ['ready']),
+                    ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 20),
-
-            ////// Order Items Card //////
             Card(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Order Items',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold)),
+                    Text(
+                      'Order Items',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Total',
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(color: theme.hintColor)),
-                        Text('\$2.99',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.bold)),
-                      ],
+                    ..._order!.items.map(
+                          (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${item.name} x${item.quantity}',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ),
+                            Text(
+                              'Rs ${item.lineTotal.toStringAsFixed(2)}',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 20),
+                    const Divider(),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                       children: [
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.call, size: 18),
-                          label: const Text('Call Restaurant'),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: color.primary),
-                            foregroundColor: color.primary,
+                        Text(
+                          'Subtotal',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.hintColor,
                           ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.chat, size: 18),
-                          label: const Text('Chat Support'),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: color.primary),
-                            foregroundColor: color.primary,
+                        Text(
+                          'Rs ${_order!.subtotal.toStringAsFixed(2)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Tax',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.hintColor,
+                          ),
+                        ),
+                        Text(
+                          'Rs ${_order!.tax.toStringAsFixed(2)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Delivery Fee',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.hintColor,
+                          ),
+                        ),
+                        Text(
+                          'Rs ${_order!.deliveryFee.toStringAsFixed(2)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Rs ${_order!.totalPrice.toStringAsFixed(2)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: color.primary,
                           ),
                         ),
                       ],
                     ),
+                    if (_order!.deliveryAddress.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Delivery Address',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _order!.deliveryAddress,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 24),
-
-            ////// View Order History Button //////
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/order_history');
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const OrderHistoryScreen(),
+                    ),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: color.primary,
@@ -175,38 +434,6 @@ class OrderTrackingScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildStatusRow(BuildContext context,
-      {required IconData icon,
-        required String title,
-        bool done = false,
-        bool inProgress = false}) {
-    final theme = Theme.of(context);
-    final color = theme.colorScheme;
-    return ListTile(
-      leading: Icon(icon,
-          color: done
-              ? Colors.green
-              : inProgress
-              ? color.primary
-              : theme.hintColor),
-      title: Text(title,
-          style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-              color: done
-                  ? Colors.green
-                  : inProgress
-                  ? color.primary
-                  : theme.hintColor)),
-      trailing: done
-          ? const Icon(Icons.check, color: Colors.green)
-          : inProgress
-          ? Text('In Progress',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: color.primary))
-          : null,
     );
   }
 }

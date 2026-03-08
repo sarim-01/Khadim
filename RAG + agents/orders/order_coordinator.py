@@ -8,6 +8,15 @@ from dotenv import load_dotenv
 from infrastructure.config import AGENT_TASKS_CHANNEL, RESPONSE_CHANNEL_PREFIX
 from infrastructure.database_connection import DatabaseConnection
 
+"""
+Legacy Redis-based coordination flow.
+
+Production mobile app checkout should use:
+    /cart/place_order  -> orders_service.place_order_sync()
+
+Keep this file only for agent-based experiments, demos, or future async orchestration.
+Do not use it as the main mobile app checkout path.
+"""
 # `order_coordinator` acts as a lightweight pipeline layer that "glues" together
 # the cart, order and kitchen agents.  It can be triggered either from Streamlit
 # (via the orchestrator) or directly by publishing a task to Redis with

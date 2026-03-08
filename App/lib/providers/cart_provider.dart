@@ -22,7 +22,6 @@ class CartProvider extends ChangeNotifier {
 
   int get cartCount => _items.fold(0, (sum, item) => sum + item.quantity);
 
-
   /////// INIT CART ///////
   Future<void> initCart(String userId) async {
     _isSyncing = true;
@@ -30,7 +29,6 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1) Always ask backend for the active cart (source of truth)
       final res = await CartService.getOrCreateActiveCart();
       final serverCartId = (res["cart_id"] ?? "").toString();
 
@@ -38,11 +36,9 @@ class CartProvider extends ChangeNotifier {
         throw Exception("Cart creation failed (missing cart_id)");
       }
 
-      // 2) If server gave a different cart than local, update local storage
       _cartId = serverCartId;
       await CartStorage.saveCartId(_cartId!);
 
-      // 3) Pull fresh items
       await sync();
     } catch (e) {
       _error = e.toString();
@@ -50,6 +46,36 @@ class CartProvider extends ChangeNotifier {
       _isSyncing = false;
       notifyListeners();
     }
+  }
+
+  /////// INTERNAL PARSER ///////
+  void _applyCartResponse(Map<String, dynamic> res) {
+    final data = res["data"] ?? res;
+
+    final List<dynamic> serverItems =
+    (data["items"] ?? data["cart_items"] ?? []) as List<dynamic>;
+
+    _items
+      ..clear()
+      ..addAll(serverItems.map((x) {
+        final m = x as Map<String, dynamic>;
+
+        final itemId = (m["item_id"] ?? m["id"] ?? "").toString();
+        final itemType = (m["item_type"] ?? m["type"] ?? "").toString();
+
+        final unitPriceNum = m["unit_price"] ?? m["price"] ?? 0;
+        final qtyNum = m["quantity"] ?? 1;
+
+        return CartItem(
+          id: "$itemType:$itemId",
+          name: (m["item_name"] ?? m["name"] ?? "").toString(),
+          title: (m["item_name"] ?? m["title"] ?? m["name"] ?? "").toString(),
+          price: (unitPriceNum is num) ? unitPriceNum.toDouble() : 0.0,
+          quantity: (qtyNum is num) ? qtyNum.toInt() : 1,
+          type: itemType,
+          image: (m["image_url"] ?? m["image"])?.toString(),
+        );
+      }));
   }
 
   /////// SYNC ///////
@@ -62,79 +88,23 @@ class CartProvider extends ChangeNotifier {
 
     try {
       final res = await CartService.getSummary(cartId: _cartId!);
-
-      // Backend might return either {data:{...}} or direct object
-      final data = res["data"] ?? res;
-
-      final List<dynamic> serverItems =
-      (data["items"] ?? data["cart_items"] ?? []) as List<dynamic>;
-
-      _items
-        ..clear()
-        ..addAll(serverItems.map((x) {
-          final m = x as Map<String, dynamic>;
-
-          final itemId = (m["item_id"] ?? m["id"] ?? "").toString();
-          final itemType = (m["item_type"] ?? m["type"] ?? "").toString();
-
-          final unitPriceNum = m["unit_price"] ?? m["price"] ?? 0;
-          final qtyNum = m["quantity"] ?? 1;
-
-          return CartItem(
-            id: "$itemType:$itemId", // stable composite id for UI
-            name: (m["item_name"] ?? m["name"] ?? "").toString(),
-            title: (m["item_name"] ?? m["title"] ?? m["name"] ?? "").toString(),
-            price: (unitPriceNum is num) ? unitPriceNum.toDouble() : 0.0,
-            quantity: (qtyNum is num) ? qtyNum.toInt() : 1,
-            type: itemType, // "menu_item" or "deal"
-            image: (m["image_url"] ?? m["image"])?.toString(),
-          );
-        }));
+      _applyCartResponse(res);
     } catch (e) {
-      // Fix 2: If the stored cart_id is no longer valid (inactive/abandoned/etc),
-      // refresh active cart ONCE and retry.
       try {
         final res = await CartService.getOrCreateActiveCart();
         final newCartId = (res["cart_id"] ?? "").toString();
 
-        if (newCartId.isNotEmpty && newCartId != _cartId) {
+        if (newCartId.isNotEmpty) {
           _cartId = newCartId;
           await CartStorage.saveCartId(_cartId!);
 
           final res2 = await CartService.getSummary(cartId: _cartId!);
-          final data2 = res2["data"] ?? res2;
-
-          final List<dynamic> serverItems =
-          (data2["items"] ?? data2["cart_items"] ?? []) as List<dynamic>;
-
-          _items
-            ..clear()
-            ..addAll(serverItems.map((x) {
-              final m = x as Map<String, dynamic>;
-
-              final itemId = (m["item_id"] ?? m["id"] ?? "").toString();
-              final itemType = (m["item_type"] ?? m["type"] ?? "").toString();
-
-              final unitPriceNum = m["unit_price"] ?? m["price"] ?? 0;
-              final qtyNum = m["quantity"] ?? 1;
-
-              return CartItem(
-                id: "$itemType:$itemId",
-                name: (m["item_name"] ?? m["name"] ?? "").toString(),
-                title: (m["item_name"] ?? m["title"] ?? m["name"] ?? "").toString(),
-                price: (unitPriceNum is num) ? unitPriceNum.toDouble() : 0.0,
-                quantity: (qtyNum is num) ? qtyNum.toInt() : 1,
-                type: itemType,
-                image: (m["image_url"] ?? m["image"])?.toString(),
-              );
-            }));
+          _applyCartResponse(res2);
 
           _error = null;
-          return; // important
+          return;
         }
-      } catch (_) {
-        // ignore refresh failure, fall back to original error below
-      }
+      } catch (_) {}
 
       _error = e.toString();
     } finally {
@@ -142,6 +112,7 @@ class CartProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
   /////// ADD MENU ITEM ///////
   Future<void> addMenuItem(MenuItemModel item) async {
     if (_cartId == null) return;
@@ -171,13 +142,11 @@ class CartProvider extends ChangeNotifier {
   }
 
   /////// UPDATE QTY ///////
-
   Future<void> updateQty({
     required int itemId,
     required String itemType,
     required int quantity,
-  }) async
-  {
+  }) async {
     if (_cartId == null) return;
 
     await CartService.setQuantity(
@@ -191,7 +160,6 @@ class CartProvider extends ChangeNotifier {
   }
 
   /////// REMOVE ///////
-
   Future<void> removeById({
     required int itemId,
     required String itemType,
@@ -207,6 +175,25 @@ class CartProvider extends ChangeNotifier {
     await sync();
   }
 
+  /////// AFTER ORDER SUCCESS ///////
+  Future<void> refreshAfterOrderSuccess() async {
+    _items.clear();
+    _error = null;
+    notifyListeners();
+
+    final res = await CartService.getOrCreateActiveCart();
+    final newCartId = (res["cart_id"] ?? "").toString();
+
+    if (newCartId.isEmpty) {
+      throw Exception("Failed to create a fresh cart after order");
+    }
+
+    _cartId = newCartId;
+    await CartStorage.saveCartId(_cartId!);
+    await sync();
+  }
+
+  /////// HARD RESET ///////
   void reset() {
     _items.clear();
     _cartId = null;

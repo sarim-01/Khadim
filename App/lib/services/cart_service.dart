@@ -6,7 +6,7 @@ class CartService {
     return ApiClient.postJson(
       "/cart/active",
       auth: true,
-      body: {}, // backend reads user from token
+      body: {},
     );
   }
 
@@ -24,7 +24,7 @@ class CartService {
   /////// ADD ITEM ///////
   static Future<Map<String, dynamic>> addItem({
     required String cartId,
-    required String itemType, // "menu_item" or "deal"
+    required String itemType,
     required int itemId,
     int quantity = 1,
   }) async {
@@ -78,19 +78,20 @@ class CartService {
 
   /////// PLACE ORDER ///////
   static Future<Map<String, dynamic>> placeOrder({
+    required String cartId,
     required String deliveryAddress,
-    double deliveryFee = 2.99,
+    double deliveryFee = 0.0,
     double taxRate = 0.0,
   }) async {
     return ApiClient.postJson(
       "/cart/place_order",
       auth: true,
       body: {
+        "cart_id": cartId,
         "delivery_address": deliveryAddress,
         "delivery_fee": deliveryFee,
         "tax_rate": taxRate,
       },
     );
   }
-
 }
