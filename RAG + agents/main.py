@@ -622,6 +622,162 @@ def kitchen_dashboard():
     return FileResponse(html_path, media_type="text/html")
 
 
+# ─────────────────────────────────────────────────────────────────
+# SAVED CARDS ENDPOINTS
+# ─────────────────────────────────────────────────────────────────
+
+class AddCardRequest(BaseModel):
+    card_type: str
+    last4: str
+    cardholder_name: str
+    expiry: str
+
+
+@app.post("/cards/add")
+def add_card(
+    req: AddCardRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    user_id = str(current_user["user_id"])
+    db = DatabaseConnection.get_instance()
+    import psycopg2.extras
+    with db.get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Check if user already has cards — first card becomes default
+            cur.execute("SELECT COUNT(*) AS cnt FROM saved_cards WHERE user_id = %s", (user_id,))
+            is_first = cur.fetchone()["cnt"] == 0
+            cur.execute(
+                """
+                INSERT INTO saved_cards (user_id, card_type, last4, cardholder_name, expiry, is_default)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING card_id
+                """,
+                (user_id, req.card_type, req.last4, req.cardholder_name, req.expiry, is_first),
+            )
+            card_id = cur.fetchone()["card_id"]
+        conn.commit()
+    return {"success": True, "card_id": card_id, "message": "Card saved successfully"}
+
+
+@app.get("/cards")
+def get_cards(current_user: Dict[str, Any] = Depends(get_current_user)):
+    user_id = str(current_user["user_id"])
+    db = DatabaseConnection.get_instance()
+    import psycopg2.extras
+    with db.get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT card_id, card_type, last4, cardholder_name, expiry, is_default
+                FROM saved_cards
+                WHERE user_id = %s
+                ORDER BY is_default DESC, created_at ASC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+    return {"cards": [dict(r) for r in rows]}
+
+
+@app.delete("/cards/{card_id}")
+def delete_card(
+    card_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    user_id = str(current_user["user_id"])
+    db = DatabaseConnection.get_instance()
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM saved_cards WHERE card_id = %s AND user_id = %s",
+                (card_id, user_id),
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Card not found or not yours")
+        conn.commit()
+    return {"success": True}
+
+
+# ─────────────────────────────────────────────────────────────────
+# MOCK PAYMENT ENDPOINTS
+# ─────────────────────────────────────────────────────────────────
+
+class ProcessPaymentRequest(BaseModel):
+    cart_id: str
+    amount: float
+    card_id: int
+
+
+@app.post("/payment/process")
+def process_payment(
+    req: ProcessPaymentRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    user_id = str(current_user["user_id"])
+    db = DatabaseConnection.get_instance()
+    import psycopg2.extras
+    try:
+        with db.get_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # Verify the card belongs to this user
+                cur.execute(
+                    "SELECT card_id, card_type, last4, cardholder_name FROM saved_cards WHERE card_id = %s AND user_id = %s",
+                    (req.card_id, user_id),
+                )
+                card = cur.fetchone()
+                if not card:
+                    raise HTTPException(status_code=403, detail="Card not found or does not belong to you")
+
+                transaction_id = f"TXN-{uuid.uuid4().hex[:12].upper()}"
+
+                cur.execute(
+                    """
+                    INSERT INTO payments
+                      (transaction_id, order_id, user_id, card_id, amount, card_last4, card_type, cardholder_name, status)
+                    VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, 'SUCCESS')
+                    """,
+                    (
+                        transaction_id, user_id, req.card_id,
+                        req.amount, card["last4"], card["card_type"], card["cardholder_name"],
+                    ),
+                )
+            conn.commit()
+        return {"success": True, "transaction_id": transaction_id, "message": "Payment processed successfully"}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Payment failed. Please try again.")
+
+
+class LinkOrderRequest(BaseModel):
+    order_id: int
+
+
+@app.put("/payment/{transaction_id}/link-order")
+def link_payment_to_order(
+    transaction_id: str,
+    req: LinkOrderRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    user_id = str(current_user["user_id"])
+    db = DatabaseConnection.get_instance()
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE payments SET order_id = %s WHERE transaction_id = %s AND user_id = %s",
+                (req.order_id, transaction_id, user_id),
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Payment record not found")
+            # Also store transaction_id on the order
+            cur.execute(
+                "UPDATE orders SET transaction_id = %s WHERE order_id = %s",
+                (transaction_id, req.order_id),
+            )
+        conn.commit()
+    return {"success": True}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

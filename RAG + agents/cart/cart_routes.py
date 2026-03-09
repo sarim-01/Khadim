@@ -222,6 +222,7 @@ class PlaceOrderRequest(BaseModel):
     delivery_address: str = Field(default="N/A", min_length=2, max_length=500)
     delivery_fee: float = Field(default=0.0, ge=0.0, le=9999.0)
     tax_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    transaction_id: Optional[str] = None
 
 
 @router.post("/place_order")
@@ -234,5 +235,6 @@ def place_order(req: PlaceOrderRequest, current_user: Dict[str, Any] = Depends(g
         delivery_address=req.delivery_address,
         delivery_fee=req.delivery_fee,
         tax_rate=req.tax_rate,
+        transaction_id=req.transaction_id,
     )
     return res

@@ -82,17 +82,36 @@ class CartService {
     required String deliveryAddress,
     double deliveryFee = 0.0,
     double taxRate = 0.0,
+    String? transactionId,
   }) async {
+    final body = {
+      "cart_id": cartId,
+      "delivery_address": deliveryAddress,
+      "delivery_fee": deliveryFee,
+      "tax_rate": taxRate,
+    };
+    if (transactionId != null) body["transaction_id"] = transactionId;
     return ApiClient.postJson(
       "/cart/place_order",
       auth: true,
-      body: {
-        "cart_id": cartId,
-        "delivery_address": deliveryAddress,
-        "delivery_fee": deliveryFee,
-        "tax_rate": taxRate,
-      },
+      body: body,
     );
+  }
+
+  /////// LINK PAYMENT TO ORDER ///////
+  static Future<void> linkPaymentToOrder({
+    required String transactionId,
+    required int orderId,
+  }) async {
+    try {
+      await ApiClient.putJson(
+        "/payment/$transactionId/link-order",
+        auth: true,
+        body: {"order_id": orderId},
+      );
+    } catch (_) {
+      // fire-and-forget — don't surface this error
+    }
   }
 
   /////// RECOMMENDATIONS ///////

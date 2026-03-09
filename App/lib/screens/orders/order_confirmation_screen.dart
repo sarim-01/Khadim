@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:khaadim/utils/app_images.dart';
 import 'package:khaadim/screens/navigation/main_screen.dart';
 import 'order_tracking_screen.dart';
@@ -8,6 +9,7 @@ class OrderConfirmationScreen extends StatelessWidget {
   final String orderNumber;
   final double totalAmount;
   final int estimatedPrepTimeMinutes;
+  final String? transactionId;
 
   const OrderConfirmationScreen({
     super.key,
@@ -15,6 +17,7 @@ class OrderConfirmationScreen extends StatelessWidget {
     required this.orderNumber,
     required this.totalAmount,
     required this.estimatedPrepTimeMinutes,
+    this.transactionId,
   });
 
   Widget _buildInfoText(
@@ -115,6 +118,68 @@ class OrderConfirmationScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 40),
+                // ── Transaction ID box ──────────────────────────────
+                if (transactionId != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 14, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.08),
+                      border: Border.all(color: Colors.green.shade400),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.check_circle,
+                            color: Colors.green, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Payment Successful',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Transaction ID: $transactionId',
+                                style: TextStyle(
+                                  color: Colors.green.shade700,
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.copy_outlined,
+                              color: Colors.green, size: 18),
+                          onPressed: () {
+                            Clipboard.setData(
+                                ClipboardData(text: transactionId!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Copied!'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(

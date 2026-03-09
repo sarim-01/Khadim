@@ -153,6 +153,7 @@ def place_order_sync(
     delivery_address: str = "N/A",
     delivery_fee: float = 0.0,
     tax_rate: float = 0.0,
+    transaction_id: str = None,
 ) -> Dict[str, Any]:
     """
     Production checkout flow:
@@ -269,9 +270,9 @@ def place_order_sync(
             order_row = conn.execute(
                 text("""
                     INSERT INTO orders
-                      (cart_id, total_price, order_data, status, delivery_address, subtotal, tax, delivery_fee)
+                      (cart_id, total_price, order_data, status, delivery_address, subtotal, tax, delivery_fee, transaction_id)
                     VALUES
-                      (:cart_id, :total_price, CAST(:order_data AS jsonb), 'confirmed', :delivery_address, :subtotal, :tax, :delivery_fee)
+                      (:cart_id, :total_price, CAST(:order_data AS jsonb), 'confirmed', :delivery_address, :subtotal, :tax, :delivery_fee, :transaction_id)
                     RETURNING order_id
                 """),
                 {
@@ -282,6 +283,7 @@ def place_order_sync(
                     "subtotal": subtotal,
                     "tax": tax,
                     "delivery_fee": delivery_fee,
+                    "transaction_id": transaction_id,
                 },
             ).mappings().fetchone()
 
