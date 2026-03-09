@@ -20,4 +20,14 @@ class OrderService {
       retryOnNetworkError: true,
     );
   }
+
+  /////// LIGHTWEIGHT STATUS POLL ///////
+  static Future<Map<String, dynamic>> getOrderTracking({
+    required int orderId,
+  }) async {
+    return ApiClient.getJson(
+      "/orders/$orderId/tracking",
+      auth: true,
+    );
+  }
 }

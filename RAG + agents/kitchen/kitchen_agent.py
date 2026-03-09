@@ -94,6 +94,79 @@ def update_task_status(task_id, new_status):
             conn.commit()
             return updated is not None
 
+
+KITCHEN_TO_ORDER_STATUS = {
+    "QUEUED":      "in_kitchen",
+    "IN_PROGRESS": "preparing",
+    "READY":       "ready",
+    "COMPLETED":   "completed",
+}
+
+# Lower rank = earlier stage (worst/slowest task wins)
+_STATUS_RANK = {"QUEUED": 0, "IN_PROGRESS": 1, "READY": 2}
+
+
+def sync_order_status(order_id, kitchen_status, estimated_minutes=None):
+    """Update orders table to reflect current kitchen status."""
+    order_status = KITCHEN_TO_ORDER_STATUS.get(kitchen_status)
+    if not order_status:
+        return
+    db = get_db_instance()
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            if estimated_minutes is not None:
+                cur.execute(
+                    "UPDATE orders SET status=%s, estimated_prep_time_minutes=%s WHERE order_id=%s",
+                    (order_status, estimated_minutes, order_id)
+                )
+            else:
+                cur.execute(
+                    "UPDATE orders SET status=%s WHERE order_id=%s",
+                    (order_status, order_id)
+                )
+            conn.commit()
+    print(f"[Kitchen] Synced order {order_id} → status={order_status}")
+
+
+def compute_and_sync_order_status(order_id):
+    """
+    Look at ALL remaining tasks for the order and advance the order status
+    only when every task has reached that level.
+      - Any task still QUEUED       → in_kitchen  (hold)
+      - All IN_PROGRESS or better   → preparing   (remaining time = max of IN_PROGRESS tasks)
+      - All READY                   → ready        (time = 0)
+      - No tasks left               → completed    (time = 0)
+    """
+    db = get_db_instance()
+    with db.get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT status, estimated_minutes FROM kitchen_tasks WHERE order_id=%s",
+                (order_id,)
+            )
+            tasks = cur.fetchall()
+
+    if not tasks:
+        sync_order_status(order_id, "COMPLETED", 0)
+        return
+
+    statuses = [t["status"] for t in tasks]
+
+    # Determine the worst (lowest-rank) status among all tasks
+    worst = min(statuses, key=lambda s: _STATUS_RANK.get(s, 0))
+
+    if worst == "QUEUED":
+        # At least one task hasn't started yet — hold at in_kitchen
+        sync_order_status(order_id, "QUEUED")
+    elif worst == "IN_PROGRESS":
+        # All started; show remaining time of the slowest IN_PROGRESS task
+        in_progress_times = [t["estimated_minutes"] for t in tasks if t["status"] == "IN_PROGRESS"]
+        remaining = max(in_progress_times) if in_progress_times else 0
+        sync_order_status(order_id, "IN_PROGRESS", remaining)
+    else:
+        # All tasks are READY
+        sync_order_status(order_id, "READY", 0)
+
 # =========================================================
 #   DB FETCH HELPERS
 # =========================================================
@@ -345,6 +418,13 @@ def main():
             try:
                 result = plan_order(payload)
                 print(f"[Kitchen] Planned Order {result.get('order_id')}")
+                # Sync order status + estimated time to orders table
+                if result.get("success"):
+                    sync_order_status(
+                        result["order_id"],
+                        "QUEUED",
+                        result.get("estimated_total_minutes"),
+                    )
             except Exception as e:
                 print(f"[Kitchen Error] Plan Order failed: {e}")
                 result = {"success": False, "message": str(e)}
@@ -380,22 +460,41 @@ def main():
                     else:
                         # === HARD DELETE LOGIC ===
                         if new_status == "COMPLETED":
+                            # Fetch order_id before deleting the row
+                            with db.get_connection() as conn:
+                                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                                    cur.execute("SELECT order_id FROM kitchen_tasks WHERE task_id = %s", (task_id,))
+                                    task_row = cur.fetchone()
+                            order_id_for_sync = task_row["order_id"] if task_row else None
+
                             with db.get_connection() as conn:
                                 with conn.cursor() as cur:
                                     cur.execute("DELETE FROM kitchen_tasks WHERE task_id = %s", (task_id,))
                                     conn.commit()
-                            
+
                             print(f"[Kitchen] 🗑️ DELETED Task {task_id} from Database.")
+
+                            # Recompute order status from remaining tasks
+                            if order_id_for_sync:
+                                compute_and_sync_order_status(order_id_for_sync)
+
                             result = {
-                                "success": True, 
-                                "task_id": task_id, 
+                                "success": True,
+                                "task_id": task_id,
                                 "new_status": "COMPLETED",
                                 "message": "Task completed and removed from DB."
                             }
-                        
+
                         # === NORMAL UPDATE LOGIC ===
                         else:
                             ok = update_task_status(task_id, new_status)
+                            if ok:
+                                with db.get_connection() as conn:
+                                    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                                        cur.execute("SELECT order_id FROM kitchen_tasks WHERE task_id=%s", (task_id,))
+                                        t = cur.fetchone()
+                                if t:
+                                    compute_and_sync_order_status(t["order_id"])
                             result = {
                                 "success": ok,
                                 "task_id": task_id,

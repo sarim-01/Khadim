@@ -55,6 +55,28 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     return s == "completed" || s == "delivered";
   }
 
+  Color _statusColor(String status, ColorScheme color) {
+    switch (status.toLowerCase()) {
+      case 'confirmed':   return Colors.blueGrey;
+      case 'in_kitchen':  return Colors.orange;
+      case 'preparing':   return Colors.amber;
+      case 'ready':       return Colors.green;
+      case 'completed':   return Colors.green.shade700;
+      default:            return color.primary;
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'confirmed':   return 'Confirmed';
+      case 'in_kitchen':  return 'In Kitchen';
+      case 'preparing':   return 'Preparing';
+      case 'ready':       return 'Ready';
+      case 'completed':   return 'Completed';
+      default:            return status;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -136,11 +158,19 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            'Status: ${order.status}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: color.primary,
-                              fontWeight: FontWeight.w600,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: _statusColor(order.status, color).withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: _statusColor(order.status, color), width: 1),
+                            ),
+                            child: Text(
+                              _statusLabel(order.status),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: _statusColor(order.status, color),
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],

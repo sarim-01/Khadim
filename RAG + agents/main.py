@@ -1,10 +1,14 @@
 # main.py
 
 import os
+import uuid
+import json
+import time as _time
+import redis as redis_lib
 from auth.auth_routes import router as auth_router
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, Any
 
@@ -19,10 +23,13 @@ from orders.order_routes import router as order_router
 from agents.upsell_agent import UpsellAgent
 from agents.recommender_agent import RecommendationEngine
 from auth.auth_routes import get_current_user
-from fastapi import Depends
 from typing import Dict, List
 
 from infrastructure.db import SQL_ENGINE
+from infrastructure.config import AGENT_TASKS_CHANNEL
+from infrastructure.database_connection import DatabaseConnection
+
+_REDIS_CLIENT = redis_lib.StrictRedis(host=os.getenv("REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", 6379)), db=0, decode_responses=True)
 
 upsell_agent = UpsellAgent()
 recommendation_engine = RecommendationEngine()
@@ -497,6 +504,112 @@ def get_cart_recommendations(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# =========================================================
+# KITCHEN DASHBOARD ENDPOINTS
+# =========================================================
+
+@app.get("/kitchen/orders")
+def kitchen_get_orders():
+    """Return all active kitchen tasks grouped by order_id."""
+    db = DatabaseConnection.get_instance()
+    import psycopg2.extras
+    with db.get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT task_id, order_id, item_name, qty, station,
+                       assigned_chef, estimated_minutes, status
+                FROM kitchen_tasks
+                WHERE status IN ('QUEUED', 'IN_PROGRESS', 'READY')
+                ORDER BY order_id, task_id
+            """)
+            rows = cur.fetchall()
+
+    # Group by order_id
+    STATUS_RANK = {"QUEUED": 0, "IN_PROGRESS": 1, "READY": 2}
+    orders: dict = {}
+    for row in rows:
+        oid = row["order_id"]
+        if oid not in orders:
+            orders[oid] = {"order_id": oid, "tasks": [], "overall_status": "READY"}
+        orders[oid]["tasks"].append(dict(row))
+        # overall_status = lowest rank (earliest stage) among all tasks
+        if STATUS_RANK.get(row["status"], 2) < STATUS_RANK.get(orders[oid]["overall_status"], 2):
+            orders[oid]["overall_status"] = row["status"]
+
+    return {"orders": list(orders.values())}
+
+
+class KitchenStatusUpdate(BaseModel):
+    new_status: str
+
+
+@app.post("/kitchen/tasks/{task_id}/update-status")
+def kitchen_update_task_status(task_id: str, body: KitchenStatusUpdate):
+    """Publish update_status command to Redis, wait for response."""
+    allowed = {"IN_PROGRESS", "READY", "COMPLETED"}
+    if body.new_status not in allowed:
+        raise HTTPException(status_code=400, detail=f"new_status must be one of {allowed}")
+
+    response_channel = f"resp_{uuid.uuid4().hex}"
+    message = {
+        "agent": "kitchen",
+        "command": "update_status",
+        "payload": {"task_id": task_id, "new_status": body.new_status},
+        "response_channel": response_channel,
+    }
+
+    pubsub = _REDIS_CLIENT.pubsub()
+    pubsub.subscribe(response_channel)
+    # Drain the subscribe-confirmation message before publishing
+    pubsub.get_message(timeout=0.1)
+
+    _REDIS_CLIENT.publish(AGENT_TASKS_CHANNEL, json.dumps(message))
+
+    # Poll with get_message() so the timeout is actually enforced
+    deadline = _time.time() + 5
+    result = None
+    while _time.time() < deadline:
+        msg = pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+        if msg and msg["type"] == "message":
+            result = json.loads(msg["data"])
+            break
+        _time.sleep(0.05)
+
+    pubsub.unsubscribe(response_channel)
+    pubsub.close()
+
+    if result is None:
+        raise HTTPException(status_code=504, detail="Kitchen agent did not respond in time. Is it running?")
+    return result
+
+
+@app.get("/orders/{order_id}/tracking")
+def get_order_tracking(
+    order_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Lightweight polling endpoint — returns only status + prep time."""
+    with SQL_ENGINE.connect() as conn:
+        row = conn.execute(
+            text("SELECT order_id, status, estimated_prep_time_minutes FROM orders WHERE order_id = :oid"),
+            {"oid": order_id},
+        ).mappings().fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {
+        "order_id": row["order_id"],
+        "status": row["status"],
+        "estimated_prep_time_minutes": row["estimated_prep_time_minutes"] or 0,
+    }
+
+
+@app.get("/kitchen/dashboard")
+def kitchen_dashboard():
+    """Serve the kitchen web dashboard."""
+    html_path = os.path.join(os.path.dirname(__file__), "kitchen", "kitchen_dashboard_ui.html")
+    return FileResponse(html_path, media_type="text/html")
 
 
 if __name__ == "__main__":

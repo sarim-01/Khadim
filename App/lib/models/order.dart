@@ -31,6 +31,26 @@ class Order {
 
   String get orderNumber => orderId.toString();
 
+  Order copyWith({
+    String? status,
+    int? estimatedPrepTimeMinutes,
+  }) {
+    return Order(
+      orderId: orderId,
+      cartId: cartId,
+      status: status ?? this.status,
+      totalPrice: totalPrice,
+      subtotal: subtotal,
+      tax: tax,
+      deliveryFee: deliveryFee,
+      estimatedPrepTimeMinutes: estimatedPrepTimeMinutes ?? this.estimatedPrepTimeMinutes,
+      deliveryAddress: deliveryAddress,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      items: items,
+    );
+  }
+
   factory Order.fromJson(Map<String, dynamic> json) {
     return Order(
       orderId: (json['order_id'] is num) ? (json['order_id'] as num).toInt() : 0,

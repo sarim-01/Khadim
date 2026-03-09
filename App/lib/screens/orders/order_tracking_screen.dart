@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:khaadim/models/order.dart';
 import 'package:khaadim/screens/orders/order_history_screen.dart';
@@ -19,13 +20,23 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   bool _loading = true;
   String? _error;
   Order? _order;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _loadOrder();
+    // Start polling every 5 seconds after the first full load
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
   }
 
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Full reload — called on initState and manual refresh button.
   Future<void> _loadOrder() async {
     setState(() {
       _loading = true;
@@ -45,24 +56,78 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
   }
 
-  double _progressForStatus(String status) {
+  /// Lightweight poll — only updates status + prep time. Does NOT rebuild the full order.
+  Future<void> _pollStatus() async {
+    if (_order == null) return;
+    try {
+      final res = await OrderService.getOrderTracking(orderId: widget.orderId);
+      final newStatus = (res['status'] as String?)?.toLowerCase() ?? _order!.status;
+      final newPrepTime = (res['estimated_prep_time_minutes'] as num?)?.toInt() ?? _order!.estimatedPrepTimeMinutes;
+
+      if (!mounted) return;
+
+      final statusChanged = newStatus != _order!.status;
+      setState(() {
+        _order = _order!.copyWith(
+          status: newStatus,
+          estimatedPrepTimeMinutes: newPrepTime,
+        );
+      });
+
+      if (statusChanged && newStatus == 'completed') {
+        _pollTimer?.cancel();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your order is ready! 🎉'),
+            duration: Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      // Silently ignore poll errors — will retry next tick
+    }
+  }
+
+  /// Returns user-friendly time label based on status + stored minutes.
+  String _displayTime(String status, int storedMinutes) {
     final s = status.toLowerCase();
+    final base = storedMinutes > 0 ? storedMinutes : 15; // fallback if DB hasn't set one yet
 
     switch (s) {
-      case 'created':
-        return 0.15;
       case 'confirmed':
-        return 0.25;
       case 'in_kitchen':
-        return 0.45;
+        // Full estimated time — kitchen hasn't started yet
+        return '$base mins';
       case 'preparing':
-        return 0.65;
+        // Roughly 3 mins less than stored (IN_PROGRESS value from kitchen agent)
+        final left = (storedMinutes - 3).clamp(1, 99);
+        return '$left mins';
       case 'ready':
-        return 0.85;
+        // About 1/6 of original time left — almost done
+        final left = (base ~/ 6).clamp(1, 99);
+        return '$left min${left == 1 ? '' : 's'}';
+      case 'completed':
+        return '0 mins';
+      default:
+        return '$base mins';
+    }
+  }
+
+  double _progressForStatus(String status) {
+    final s = status.toLowerCase();
+    switch (s) {
+      case 'confirmed':
+      case 'in_kitchen':
+        return 0.15;
+      case 'preparing':
+        return 0.45;
+      case 'ready':
+        return 0.75;
       case 'completed':
         return 1.0;
       default:
-        return 0.2;
+        return 0.1;
     }
   }
 
@@ -191,9 +256,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             color: color.primary, size: 18),
                         const SizedBox(width: 6),
                         Text(
-                          _order!.estimatedPrepTimeMinutes > 0
-                              ? '${_order!.estimatedPrepTimeMinutes} mins'
-                              : 'Updating',
+                          _displayTime(_order!.status, _order!.estimatedPrepTimeMinutes),
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w500,
                             color: color.primary,
@@ -238,43 +301,32 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       icon: Icons.check_circle,
                       title: 'Order Confirmed',
                       done: _isDone(_order!.status, [
-                        'confirmed',
-                        'in_kitchen',
-                        'preparing',
-                        'ready',
-                        'completed'
+                        'confirmed', 'in_kitchen', 'preparing', 'ready', 'completed'
                       ]),
                       inProgress: _isCurrent(_order!.status, ['confirmed']),
-                    ),
-                    _buildStatusRow(
-                      context,
-                      icon: Icons.restaurant_menu,
-                      title: 'In Kitchen',
-                      done: _isDone(_order!.status, [
-                        'in_kitchen',
-                        'preparing',
-                        'ready',
-                        'completed'
-                      ]),
-                      inProgress: _isCurrent(_order!.status, ['in_kitchen']),
                     ),
                     _buildStatusRow(
                       context,
                       icon: Icons.local_fire_department,
                       title: 'Preparing',
                       done: _isDone(_order!.status, [
-                        'preparing',
-                        'ready',
-                        'completed'
+                        'preparing', 'ready', 'completed'
                       ]),
-                      inProgress: _isCurrent(_order!.status, ['preparing']),
+                      inProgress: _isCurrent(_order!.status, ['in_kitchen', 'preparing']),
+                    ),
+                    _buildStatusRow(
+                      context,
+                      icon: Icons.restaurant,
+                      title: 'Ready',
+                      done: _isDone(_order!.status, ['ready', 'completed']),
+                      inProgress: _isCurrent(_order!.status, ['ready']),
                     ),
                     _buildStatusRow(
                       context,
                       icon: Icons.done_all,
-                      title: 'Ready / Completed',
-                      done: _isDone(_order!.status, ['ready', 'completed']),
-                      inProgress: _isCurrent(_order!.status, ['ready']),
+                      title: 'Completed',
+                      done: _isDone(_order!.status, ['completed']),
+                      inProgress: _isCurrent(_order!.status, ['completed']),
                     ),
                   ],
                 ),
