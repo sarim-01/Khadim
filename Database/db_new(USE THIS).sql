@@ -2589,3 +2589,25 @@ ALTER TABLE public.order_items ADD CONSTRAINT order_items_item_type_chk
     CHECK ((item_type)::text = ANY (
         (ARRAY['menu_item'::character varying, 'deal'::character varying, 'custom_deal'::character varying])::text[]
     ));
+
+
+--- feedback for personal and custom deals ---
+
+ALTER TABLE public.feedback
+    ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES public.menu_item(item_id) NULL;
+
+ALTER TABLE public.feedback
+    ADD COLUMN IF NOT EXISTS deal_id INTEGER REFERENCES public.deal(deal_id) NULL;
+
+ALTER TABLE public.feedback
+    DROP CONSTRAINT IF EXISTS feedback_type_chk;
+
+ALTER TABLE public.feedback
+    ADD CONSTRAINT feedback_type_chk
+    CHECK ((feedback_type)::text = ANY (
+        (ARRAY['GENERAL','ORDER','DELIVERY','APP','FOOD','DEAL','CUSTOM_DEAL'])::text[]
+    ));
+
+CREATE UNIQUE INDEX IF NOT EXISTS feedback_user_order_unique
+    ON public.feedback (user_id, order_id)
+    WHERE item_id IS NULL AND order_id IS NOT NULL;
