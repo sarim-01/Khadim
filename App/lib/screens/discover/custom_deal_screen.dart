@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../models/custom_deal_model.dart';
 import '../../providers/cart_provider.dart';
-import '../../services/deal_service.dart';
 import '../../services/cart_service.dart';
+import '../../services/deal_service.dart';
 
 class CustomDealScreen extends StatefulWidget {
   const CustomDealScreen({super.key});
@@ -21,18 +21,98 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
   CustomDealResponse? _dealResponse;
   String? _error;
 
+  final List<String> _allSuggestions = <String>[
+    'Burger deal for 2',
+    'BBQ combo for 3',
+    'Pakistani meal for 4',
+    'Chinese combo for 2',
+    'Fast food deal for 2',
+    'Biryani deal for 3',
+    'Desi dinner for 5',
+    'Zinger combo for 2',
+    'Pizza deal for 4',
+    'Family BBQ platter for 4',
+  ];
+
   @override
   void dispose() {
     _keywordsController.dispose();
     super.dispose();
   }
 
+  int? _extractPersonCount(String text) {
+    final RegExpMatch? match = RegExp(r'\b(\d+)\b').firstMatch(text);
+    if (match == null) return null;
+    return int.tryParse(match.group(1)!);
+  }
+
+  bool _looksLikeFullRequest(String input) {
+    final String lower = input.toLowerCase();
+
+    return lower.contains('deal') ||
+        lower.contains('for ') ||
+        lower.contains('burger') ||
+        lower.contains('biryani') ||
+        lower.contains('bbq') ||
+        lower.contains('pizza') ||
+        lower.contains('desi') ||
+        lower.contains('fast food') ||
+        lower.contains('chinese') ||
+        lower.contains('pakistani') ||
+        lower.contains('combo') ||
+        lower.contains('meal');
+  }
+
+  String _normalizeQuery(String rawInput) {
+    final String cleaned = rawInput.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+    if (_looksLikeFullRequest(cleaned)) {
+      return cleaned;
+    }
+
+    return 'Make a deal for $_personCount person${_personCount > 1 ? 's' : ''} with $cleaned';
+  }
+
+  String _friendlyError(Object error) {
+    final String text = error.toString();
+
+    if (text.contains('Exception:')) {
+      return text.replaceFirst('Exception:', '').trim();
+    }
+
+    if (text.toLowerCase().contains('failed to fetch') ||
+        text.toLowerCase().contains('socket') ||
+        text.toLowerCase().contains('connection')) {
+      return 'Could not connect to server. Please try again.';
+    }
+
+    if (text.toLowerCase().contains('500')) {
+      return 'Server error while creating deal. Please try a different request.';
+    }
+
+    return text;
+  }
+
   Future<void> _createDeal() async {
-    final keywords = _keywordsController.text.trim();
-    // Build a combined query from person count + keywords
-    final query = keywords.isEmpty
-        ? "Make a deal for $_personCount person${_personCount > 1 ? 's' : ''}"
-        : "Make a deal for $_personCount person${_personCount > 1 ? 's' : ''} with $keywords";
+    FocusScope.of(context).unfocus();
+
+    final String rawInput = _keywordsController.text.trim();
+
+    if (rawInput.isEmpty) {
+      setState(() {
+        _error = 'Please enter what kind of deal you want.';
+        _dealResponse = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter what kind of deal you want.'),
+        ),
+      );
+      return;
+    }
+
+    final String query = _normalizeQuery(rawInput);
 
     setState(() {
       _isLoading = true;
@@ -41,15 +121,21 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
     });
 
     try {
-      final response = await DealService.createCustomDeal(query);
-      final deal = CustomDealResponse.fromJson(response);
+      final Map<String, dynamic> response =
+      await DealService.createCustomDeal(query);
+      final CustomDealResponse deal = CustomDealResponse.fromJson(response);
+
+      if (!mounted) return;
+
       setState(() {
         _dealResponse = deal;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
-        _error = e.toString();
+        _error = _friendlyError(e);
         _isLoading = false;
       });
     }
@@ -58,12 +144,13 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
   Future<void> _addToCart() async {
     if (_dealResponse == null || !_dealResponse!.hasItems) return;
 
-    final cartProvider = Provider.of<CartProvider>(context, listen: false);
-    final cartId = cartProvider.cartId;
+    final CartProvider cartProvider =
+    Provider.of<CartProvider>(context, listen: false);
+    final String? cartId = cartProvider.cartId;
 
     if (cartId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Cart not available")),
+        const SnackBar(content: Text('Cart not available')),
       );
       return;
     }
@@ -71,7 +158,7 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
     setState(() => _isLoading = true);
 
     try {
-      for (final item in _dealResponse!.items) {
+      for (final CustomDealItem item in _dealResponse!.items) {
         await CartService.addItem(
           cartId: cartId,
           itemType: item.itemType,
@@ -82,33 +169,320 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
 
       await cartProvider.sync();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("✅ Custom deal added to cart!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Custom deal added to cart'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${_friendlyError(e)}')),
+      );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  String _cleanMessage(String msg) {
+    return msg
+        .replaceAll(RegExp(r'\*\*'), '')
+        .replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}]', unicode: true), '')
+        .replaceAll(RegExp(r'[\u{2600}-\u{26FF}]', unicode: true), '')
+        .replaceAll(RegExp(r'[\u{2700}-\u{27BF}]', unicode: true), '')
+        .replaceAll(RegExp(r'[\u{FE00}-\u{FEFF}]', unicode: true), '')
+        .replaceAll(RegExp(r'  +'), ' ')
+        .trim();
+  }
+
+  void _applySuggestion(String value) {
+    final int? detectedCount = _extractPersonCount(value);
+
+    setState(() {
+      _keywordsController.text = value;
+      _keywordsController.selection = TextSelection.collapsed(
+        offset: _keywordsController.text.length,
+      );
+
+      if (detectedCount != null && detectedCount > 0) {
+        _personCount = detectedCount;
+      }
+
+      _error = null;
+    });
+  }
+
+  Widget _quickChip(String text) {
+    return ActionChip(
+      label: Text(text),
+      onPressed: () => _applySuggestion(text),
+    );
+  }
+
+  Widget _buildSuggestions(ThemeData theme) {
+    final String input = _keywordsController.text.trim().toLowerCase();
+
+    final List<String> filtered = input.isEmpty
+        ? _allSuggestions.take(5).toList()
+        : _allSuggestions
+        .where((String s) => s.toLowerCase().contains(input))
+        .toList();
+
+    if (filtered.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Suggestions',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...filtered.map(
+                (String suggestion) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.auto_awesome,
+                color: theme.colorScheme.primary,
+              ),
+              title: Text(suggestion),
+              onTap: () => _applySuggestion(suggestion),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickPicks(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.only(top: 18),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Quick Picks',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _quickChip('Burger deal for 2'),
+              _quickChip('BBQ combo for 3'),
+              _quickChip('Pakistani meal for 4'),
+              _quickChip('Chinese combo for 2'),
+              _quickChip('Fast food deal for 2'),
+              _quickChip('Biryani deal for 3'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDealResult(ThemeData theme) {
+    final CustomDealResponse deal = _dealResponse!;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: deal.success ? Colors.green : Colors.orange,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                deal.success ? Icons.check_circle : Icons.info_outline,
+                color: deal.success ? Colors.green : Colors.orange,
+                size: 26,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  deal.success ? 'Deal Created!' : 'Need More Info',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: deal.success ? Colors.green : Colors.orange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _cleanMessage(deal.message),
+            style: theme.textTheme.bodyMedium,
+          ),
+          if (deal.hasItems) ...[
+            const Divider(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Deal Items',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                Text(
+                  'Qty',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 48),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...deal.items.map(
+                  (CustomDealItem item) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.itemName,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                    Container(
+                      width: 32,
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${item.quantity}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 72,
+                      child: Text(
+                        'Rs ${(item.price * item.quantity).toStringAsFixed(0)}',
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Price',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Rs ${deal.totalPrice.toStringAsFixed(0)}',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _addToCart,
+                icon: const Icon(Icons.shopping_cart),
+                label: const Text('Add to Cart'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orangeAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (!deal.success && !deal.hasItems) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Try adding more detail in keywords, for example:\n'
+                  'burger deal for 2\n'
+                  'Pakistani meal for 4\n'
+                  'BBQ combo for 3',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final ThemeData theme = Theme.of(context);
+    final bool canCreateDeal =
+        !_isLoading && _keywordsController.text.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Custom Deal"),
+        title: const Text('Custom Deal'),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -116,9 +490,8 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── PERSON COUNTER ──────────────────────────────────────
             Text(
-              "Person",
+              'Person',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -126,7 +499,6 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                // Minus
                 _CounterButton(
                   icon: Icons.remove,
                   onTap: () {
@@ -136,7 +508,6 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
                   },
                 ),
                 const SizedBox(width: 16),
-                // Count display
                 Container(
                   width: 80,
                   height: 48,
@@ -149,26 +520,22 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
                     ),
                   ),
                   child: Text(
-                    "$_personCount",
+                    '$_personCount',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
                 const SizedBox(width: 16),
-                // Plus
                 _CounterButton(
                   icon: Icons.add,
                   onTap: () => setState(() => _personCount++),
                 ),
               ],
             ),
-
             const SizedBox(height: 28),
-
-            // ── KEYWORDS ────────────────────────────────────────────
             Text(
-              "Keywords",
+              'Keywords',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -176,8 +543,21 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _keywordsController,
+              onChanged: (String value) {
+                final int? detectedCount = _extractPersonCount(value);
+
+                setState(() {
+                  if (detectedCount != null &&
+                      detectedCount > 0 &&
+                      detectedCount != _personCount) {
+                    _personCount = detectedCount;
+                  }
+                  _error = null;
+                });
+              },
               decoration: InputDecoration(
-                hintText: "Description / words  e.g. something Pakistani",
+                hintText: 'Example: Burger deal for 2',
+                prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(
@@ -197,18 +577,24 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
               ),
               maxLines: 3,
               textInputAction: TextInputAction.done,
+              onSubmitted: (_) {
+                if (canCreateDeal) {
+                  _createDeal();
+                }
+              },
             ),
-
+            _buildSuggestions(theme),
+            _buildQuickPicks(theme),
             const SizedBox(height: 28),
-
-            // ── SUBMIT BUTTON ────────────────────────────────────────
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isLoading ? null : _createDeal,
+                onPressed: canCreateDeal ? _createDeal : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orangeAccent,
                   foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey.shade400,
+                  disabledForegroundColor: Colors.white70,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -216,24 +602,22 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
                 ),
                 child: _isLoading
                     ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
                     : const Text(
-                        "Create Deal",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                  'Create Deal',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
-
-            // ── ERROR ────────────────────────────────────────────────
             if (_error != null) ...[
               const SizedBox(height: 20),
               Container(
@@ -256,8 +640,6 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
                 ),
               ),
             ],
-
-            // ── DEAL RESULT ──────────────────────────────────────────
             if (_dealResponse != null && !_isLoading) ...[
               const SizedBox(height: 24),
               _buildDealResult(theme),
@@ -267,194 +649,21 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
       ),
     );
   }
-
-  /// Strips markdown bold markers (**text**) and emoji characters from a string.
-  String _cleanMessage(String msg) {
-    return msg
-        .replaceAll(RegExp(r'\*\*'), '')
-        .replaceAll(RegExp(r'[\u{1F000}-\u{1FFFF}]', unicode: true), '')
-        .replaceAll(RegExp(r'[\u{2600}-\u{26FF}]', unicode: true), '')
-        .replaceAll(RegExp(r'[\u{2700}-\u{27BF}]', unicode: true), '')
-        .replaceAll(RegExp(r'[\u{FE00}-\u{FEFF}]', unicode: true), '')
-        .replaceAll(RegExp(r'  +'), ' ')
-        .trim();
-  }
-
-  Widget _buildDealResult(ThemeData theme) {
-    final deal = _dealResponse!;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: deal.success ? Colors.green : Colors.orange,
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Status row
-          Row(
-            children: [
-              Icon(
-                deal.success ? Icons.check_circle : Icons.info_outline,
-                color: deal.success ? Colors.green : Colors.orange,
-                size: 26,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  deal.success ? "Deal Created!" : "Need More Info",
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: deal.success ? Colors.green : Colors.orange,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          Text(_cleanMessage(deal.message), style: theme.textTheme.bodyMedium),
-
-          // Deal items table
-          if (deal.hasItems) ...[
-            const Divider(height: 28),
-            // Header row
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "Deal Items",
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Text(
-                  "Qty",
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(width: 48),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...deal.items.map((item) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      item.itemName,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                  Container(
-                    width: 32,
-                    alignment: Alignment.center,
-                    child: Text(
-                      "${item.quantity}",
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 72,
-                    child: Text(
-                      "Rs ${(item.price * item.quantity).toStringAsFixed(0)}",
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )),
-
-            const Divider(height: 24),
-
-            // Price row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  "Price",
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  "Rs ${deal.totalPrice.toStringAsFixed(0)}",
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Add to cart
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _addToCart,
-                icon: const Icon(Icons.shopping_cart),
-                label: const Text("Add to Cart"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orangeAccent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
-
-          if (!deal.success && !deal.hasItems) ...[
-            const SizedBox(height: 12),
-            Text(
-              "Try adding more detail in keywords, e.g.:\n"
-              "• Pakistani  • Biryani  • Fast food  • BBQ",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
-/// A round +/- button used in the person counter.
 class _CounterButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _CounterButton({required this.icon, required this.onTap});
+  const _CounterButton({
+    required this.icon,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
+    final Color color = Theme.of(context).colorScheme.primary;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),

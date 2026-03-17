@@ -49,26 +49,19 @@ class CustomDealResponse {
   });
 
   factory CustomDealResponse.fromJson(Map<String, dynamic> json) {
-    List<CustomDealItem> items = [];
-    double totalPrice = 0;
+    final List<CustomDealItem> parsedItems =
+    (json['items'] as List<dynamic>? ?? [])
+        .map((e) => CustomDealItem.fromJson(e as Map<String, dynamic>))
+        .toList();
 
-    if (json['deal_data'] != null) {
-      final dealData = json['deal_data'] as Map<String, dynamic>;
-      
-      if (dealData['items'] != null) {
-        items = (dealData['items'] as List)
-            .map((e) => CustomDealItem.fromJson(e))
-            .toList();
-      }
-      
-      totalPrice = (dealData['total_price'] ?? 0).toDouble();
-    }
+    final double parsedTotalPrice =
+    (json['total_price'] ?? 0).toDouble();
 
     return CustomDealResponse(
       success: json['success'] ?? false,
       message: json['message'] ?? '',
-      items: items,
-      totalPrice: totalPrice,
+      items: parsedItems,
+      totalPrice: parsedTotalPrice,
     );
   }
 

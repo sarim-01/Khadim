@@ -36,10 +36,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           .map((e) => Order.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } catch (e) {
-      _error = e.toString();
+      _error = e.toString().replaceFirst('Exception: ', '');
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+        });
       }
     }
   }
@@ -57,23 +59,54 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   Color _statusColor(String status, ColorScheme color) {
     switch (status.toLowerCase()) {
-      case 'confirmed':   return Colors.blueGrey;
-      case 'in_kitchen':  return Colors.orange;
-      case 'preparing':   return Colors.amber;
-      case 'ready':       return Colors.green;
-      case 'completed':   return Colors.green.shade700;
-      default:            return color.primary;
+      case 'confirmed':
+        return Colors.blueGrey;
+      case 'in_kitchen':
+        return Colors.orange;
+      case 'preparing':
+        return Colors.amber;
+      case 'ready':
+        return Colors.green;
+      case 'completed':
+      case 'delivered':
+        return Colors.green.shade700;
+      default:
+        return color.primary;
     }
   }
 
   String _statusLabel(String status) {
     switch (status.toLowerCase()) {
-      case 'confirmed':   return 'Confirmed';
-      case 'in_kitchen':  return 'In Kitchen';
-      case 'preparing':   return 'Preparing';
-      case 'ready':       return 'Ready';
-      case 'completed':   return 'Completed';
-      default:            return status;
+      case 'confirmed':
+        return 'Confirmed';
+      case 'in_kitchen':
+        return 'In Kitchen';
+      case 'preparing':
+        return 'Preparing';
+      case 'ready':
+        return 'Ready';
+      case 'completed':
+        return 'Completed';
+      case 'delivered':
+        return 'Delivered';
+      default:
+        return status;
+    }
+  }
+
+  Future<void> _openFeedback(Order order) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedbackScreen(
+          orderId: order.orderId,
+          feedbackType: 'ORDER',
+        ),
+      ),
+    );
+
+    if (result == true) {
+      _loadOrders();
     }
   }
 
@@ -127,8 +160,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        OrderTrackingScreen(orderId: order.orderId),
+                    builder: (_) => OrderTrackingScreen(
+                      orderId: order.orderId,
+                    ),
                   ),
                 );
               },
@@ -141,11 +175,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   children: [
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Order #${order.orderNumber}',
-                            style: theme.textTheme.titleSmall?.copyWith(
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: color.onBackground,
                             ),
@@ -153,22 +189,40 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                           const SizedBox(height: 4),
                           Text(
                             'Placed on ${_formatDate(order.createdAt)}',
-                            style: theme.textTheme.bodySmall?.copyWith(
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(
                               color: theme.hintColor,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
-                              color: _statusColor(order.status, color).withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: _statusColor(order.status, color), width: 1),
+                              color: _statusColor(
+                                order.status,
+                                color,
+                              ).withOpacity(0.15),
+                              borderRadius:
+                              BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _statusColor(
+                                  order.status,
+                                  color,
+                                ),
+                                width: 1,
+                              ),
                             ),
                             child: Text(
                               _statusLabel(order.status),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: _statusColor(order.status, color),
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(
+                                color: _statusColor(
+                                  order.status,
+                                  color,
+                                ),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -181,7 +235,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                       children: [
                         Text(
                           'Rs ${order.totalPrice.toStringAsFixed(2)}',
-                          style: theme.textTheme.bodyLarge?.copyWith(
+                          style: theme.textTheme.bodyLarge
+                              ?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: color.primary,
                           ),
@@ -189,21 +244,16 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         const SizedBox(height: 8),
                         if (delivered)
                           SizedBox(
-                            height: 30,
+                            height: 32,
                             child: OutlinedButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                    const FeedbackScreen(),
-                                  ),
-                                );
-                              },
+                              onPressed: () => _openFeedback(order),
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: color.primary),
+                                side: BorderSide(
+                                  color: color.primary,
+                                ),
                                 foregroundColor: color.primary,
-                                padding: const EdgeInsets.symmetric(
+                                padding:
+                                const EdgeInsets.symmetric(
                                   horizontal: 10,
                                 ),
                               ),

@@ -162,6 +162,7 @@ def place_order_sync(
     - insert orders
     - insert order_items
     - expand deals into kitchen tasks
+    - link payment to order if transaction_id provided
     - mark cart inactive + clear cart_items
     """
     try:
@@ -187,7 +188,7 @@ def place_order_sync(
 
             existing = conn.execute(
                 text("""
-                    SELECT order_id, status, total_price, subtotal, tax, delivery_fee, estimated_prep_time_minutes
+                    SELECT order_id, status, payment_method, total_price, subtotal, tax, delivery_fee, estimated_prep_time_minutes
                     FROM orders
                     WHERE cart_id = :cid
                     LIMIT 1
@@ -201,6 +202,7 @@ def place_order_sync(
                     "order_id": int(existing["order_id"]),
                     "cart_id": cart_id,
                     "status": existing["status"],
+                    "payment_method": existing.get("payment_method"),
                     "subtotal": float(existing["subtotal"] or 0),
                     "tax": float(existing["tax"] or 0),
                     "delivery_fee": float(existing["delivery_fee"] or 0),
@@ -267,12 +269,14 @@ def place_order_sync(
                 "total_price": total,
             }
 
+            payment_method = "CARD" if transaction_id else "COD"
+
             order_row = conn.execute(
                 text("""
                     INSERT INTO orders
-                      (cart_id, total_price, order_data, status, delivery_address, subtotal, tax, delivery_fee, transaction_id)
+                      (cart_id, total_price, order_data, status, delivery_address, subtotal, tax, delivery_fee, payment_method)
                     VALUES
-                      (:cart_id, :total_price, CAST(:order_data AS jsonb), 'confirmed', :delivery_address, :subtotal, :tax, :delivery_fee, :transaction_id)
+                      (:cart_id, :total_price, CAST(:order_data AS jsonb), 'confirmed', :delivery_address, :subtotal, :tax, :delivery_fee, :payment_method)
                     RETURNING order_id
                 """),
                 {
@@ -283,11 +287,24 @@ def place_order_sync(
                     "subtotal": subtotal,
                     "tax": tax,
                     "delivery_fee": delivery_fee,
-                    "transaction_id": transaction_id,
+                    "payment_method": payment_method,
                 },
             ).mappings().fetchone()
 
             order_id = int(order_row["order_id"])
+
+            if transaction_id:
+                conn.execute(
+                    text("""
+                        UPDATE payments
+                        SET order_id = :order_id
+                        WHERE transaction_id = :transaction_id
+                    """),
+                    {
+                        "order_id": order_id,
+                        "transaction_id": transaction_id,
+                    },
+                )
 
             for r in cart_items:
                 unit_price = float(r["unit_price"] or 0)
@@ -327,6 +344,7 @@ def place_order_sync(
                 text("DELETE FROM cart_items WHERE cart_id = :cid"),
                 {"cid": cart_id},
             )
+
             conn.execute(
                 text("""
                     UPDATE cart
@@ -341,6 +359,7 @@ def place_order_sync(
                 "order_id": order_id,
                 "cart_id": cart_id,
                 "status": "confirmed",
+                "payment_method": payment_method,
                 "subtotal": subtotal,
                 "tax": tax,
                 "delivery_fee": delivery_fee,
@@ -355,7 +374,7 @@ def place_order_sync(
         with SQL_ENGINE.connect() as conn:
             existing = conn.execute(
                 text("""
-                    SELECT order_id, status, total_price, subtotal, tax, delivery_fee, estimated_prep_time_minutes
+                    SELECT order_id, status, payment_method, total_price, subtotal, tax, delivery_fee, estimated_prep_time_minutes
                     FROM orders
                     WHERE cart_id = :cid
                     LIMIT 1
@@ -369,6 +388,7 @@ def place_order_sync(
                 "order_id": int(existing["order_id"]),
                 "cart_id": cart_id,
                 "status": existing["status"],
+                "payment_method": existing.get("payment_method"),
                 "subtotal": float(existing["subtotal"] or 0),
                 "tax": float(existing["tax"] or 0),
                 "delivery_fee": float(existing["delivery_fee"] or 0),
@@ -378,13 +398,14 @@ def place_order_sync(
                 "idempotent": True,
                 "message": "Order already existed for this cart",
             }
+
         raise HTTPException(status_code=500, detail="Order creation race failed unexpectedly")
 
     except HTTPException:
         raise
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"place_order_sync failed: {repr(e)}")
-
 
 def list_orders_for_user(user_id: str) -> List[Dict[str, Any]]:
     with SQL_ENGINE.connect() as conn:

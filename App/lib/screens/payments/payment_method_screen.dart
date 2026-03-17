@@ -13,6 +13,9 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
   List<Map<String, dynamic>> _cards = [];
   bool _loading = true;
 
+  String _selectedMethod = 'COD';
+  int? _selectedCardId;
+
   @override
   void initState() {
     super.initState();
@@ -21,25 +24,244 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
 
   Future<void> _loadCards() async {
     setState(() => _loading = true);
+
     try {
       final cards = await CardService.getSavedCards();
-      if (mounted) setState(() => _cards = cards);
-    } catch (_) {
+
+      if (!mounted) return;
+
+      setState(() {
+        _cards = cards;
+
+        if (_selectedMethod == 'CARD' && _selectedCardId != null) {
+          final exists = _cards.any(
+                (card) => card['card_id'] == _selectedCardId,
+          );
+
+          if (!exists) {
+            _selectedMethod = 'COD';
+            _selectedCardId = null;
+          }
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load cards: $e')),
+      );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _deleteCard(int cardId) async {
     try {
       await CardService.deleteCard(cardId: cardId);
+
+      if (!mounted) return;
+
+      if (_selectedCardId == cardId) {
+        setState(() {
+          _selectedMethod = 'COD';
+          _selectedCardId = null;
+        });
+      }
+
       await _loadCards();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Card deleted successfully')),
+      );
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete: $e')),
+        SnackBar(content: Text('Failed to delete card: $e')),
       );
     }
+  }
+
+  Future<void> _openAddCardScreen() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AddPaymentScreen(),
+      ),
+    );
+
+    if (result != null && result is Map) {
+      await _loadCards();
+
+      if (!mounted) return;
+
+      setState(() {
+        if (result['card_id'] != null) {
+          _selectedMethod = 'CARD';
+          _selectedCardId = result['card_id'] as int;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Added ${result['card_type']} •••• ${result['last4']}",
+          ),
+        ),
+      );
+    }
+  }
+
+  void _continueWithSelection() {
+    Navigator.pop(context, {
+      'payment_method': _selectedMethod,
+      'card_id': _selectedMethod == 'CARD' ? _selectedCardId : null,
+    });
+  }
+
+  Widget _buildMethodTile({
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+    IconData icon = Icons.payments_outlined,
+    Color? iconColor,
+    Widget? trailing,
+  }) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : Colors.grey.withOpacity(0.25),
+            width: selected ? 1.5 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 5,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: iconColor ?? theme.colorScheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            trailing ??
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : Colors.grey,
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardsList(ThemeData theme) {
+    return ListView(
+      children: [
+        _buildMethodTile(
+          title: 'Cash on Delivery',
+          subtitle: 'Pay in cash when your order arrives',
+          selected: _selectedMethod == 'COD',
+          icon: Icons.local_shipping_outlined,
+          onTap: () {
+            setState(() {
+              _selectedMethod = 'COD';
+              _selectedCardId = null;
+            });
+          },
+        ),
+        if (_cards.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+            alignment: Alignment.center,
+            child: const Text(
+              'No cards added yet',
+              style: TextStyle(color: Colors.grey),
+            ),
+          )
+        else
+          ..._cards.map((card) {
+            final int cardId = card['card_id'] as int;
+            final bool selected =
+                _selectedMethod == 'CARD' && _selectedCardId == cardId;
+
+            return _buildMethodTile(
+              title: "${card['card_type']} •••• ${card['last4']}",
+              subtitle: "Expires ${card['expiry']}",
+              selected: selected,
+              icon: Icons.credit_card,
+              onTap: () {
+                setState(() {
+                  _selectedMethod = 'CARD';
+                  _selectedCardId = cardId;
+                });
+              },
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: selected
+                        ? theme.colorScheme.primary
+                        : Colors.grey,
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                    ),
+                    onPressed: () => _deleteCard(cardId),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+      ],
+    );
   }
 
   @override
@@ -48,7 +270,9 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
 
     return SafeArea(
       child: Scaffold(
-        appBar: AppBar(title: const Text("Payment Methods")),
+        appBar: AppBar(
+          title: const Text("Payment Methods"),
+        ),
         floatingActionButton: FloatingActionButton(
           backgroundColor: theme.colorScheme.primary,
           foregroundColor: Colors.black,
@@ -65,94 +289,35 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                   foregroundColor: theme.colorScheme.onPrimary,
                   minimumSize: const Size(double.infinity, 48),
                 ),
-                onPressed: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AddPaymentScreen(),
-                    ),
-                  );
-                  if (result != null && result is Map) {
-                    await _loadCards();
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            "Added ${result['card_type']} •••• ${result['last4']}"),
-                      ),
-                    );
-                  }
-                },
+                onPressed: _openAddCardScreen,
                 icon: const Icon(Icons.add),
                 label: const Text("Add New Card"),
               ),
               const SizedBox(height: 20),
-              if (_loading)
-                const Expanded(child: Center(child: CircularProgressIndicator()))
-              else
-                Expanded(
-                  child: _cards.isEmpty
-                      ? const Center(
-                          child: Text("No cards added yet",
-                              style: TextStyle(color: Colors.grey)),
-                        )
-                      : ListView.builder(
-                          itemCount: _cards.length,
-                          itemBuilder: (context, index) {
-                            final card = _cards[index];
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 14, horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surface,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 5,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.credit_card,
-                                          color: theme.colorScheme.primary),
-                                      const SizedBox(width: 10),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "${card['card_type']} •••• ${card['last4']}",
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w600),
-                                          ),
-                                          Text(
-                                              "Expires ${card['expiry']}",
-                                              style: const TextStyle(
-                                                  color: Colors.grey)),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        color: Colors.red),
-                                    onPressed: () =>
-                                        _deleteCard(card['card_id'] as int),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+              Expanded(
+                child: _loading
+                    ? const Center(
+                  child: CircularProgressIndicator(),
+                )
+                    : _buildCardsList(theme),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                  ),
+                  onPressed: _continueWithSelection,
+                  child: Text(
+                    _selectedMethod == 'COD'
+                        ? 'Continue with Cash on Delivery'
+                        : 'Continue with Card',
+                  ),
                 ),
+              ),
             ],
           ),
         ),
@@ -160,4 +325,3 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     );
   }
 }
-

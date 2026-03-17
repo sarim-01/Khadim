@@ -3,9 +3,8 @@ import 'package:provider/provider.dart';
 
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/services/cart_service.dart';
-import 'package:khaadim/services/card_service.dart';
 import 'package:khaadim/services/payment_service.dart';
-import 'package:khaadim/screens/payments/add_payment_screen.dart';
+import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/screens/orders/order_confirmation_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -17,14 +16,14 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _address =
-      TextEditingController(text: "123 Main St, City, State 12345");
+  TextEditingController(text: "123 Main St, City, State 12345");
 
-  int _selectedIndex = 0;
   bool _placingOrder = false;
-  bool _loadingCards = true;
   String _statusText = 'Place Order';
 
-  List<Map<String, dynamic>> _cards = [];
+  String _selectedPaymentMethod = 'COD';
+  int? _selectedCardId;
+  String _selectedPaymentLabel = 'Cash on Delivery';
 
   static const double _deliveryFee = 150;
   static const double _taxRate = 0.05;
@@ -34,45 +33,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final cart = context.read<CartProvider>();
-      if (cart.cartId != null) await cart.sync();
-      await _loadCards();
+      if (cart.cartId != null) {
+        await cart.sync();
+      }
     });
-  }
-
-  Future<void> _loadCards() async {
-    setState(() => _loadingCards = true);
-    try {
-      final cards = await CardService.getSavedCards();
-      if (!mounted) return;
-      setState(() {
-        _cards = cards;
-        // auto-select default card
-        final defaultIdx = cards.indexWhere((c) => c['is_default'] == true);
-        _selectedIndex = defaultIdx >= 0 ? defaultIdx : 0;
-      });
-    } catch (_) {
-      // silently ignore — empty state shown
-    } finally {
-      if (mounted) setState(() => _loadingCards = false);
-    }
-  }
-
-  Future<void> _deleteCard(int cardId) async {
-    try {
-      await CardService.deleteCard(cardId: cardId);
-      await _loadCards();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete card: $e')),
-      );
-    }
   }
 
   @override
   void dispose() {
     _address.dispose();
     super.dispose();
+  }
+
+  Future<void> _selectPaymentMethod() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PaymentMethodsScreen(),
+      ),
+    );
+
+    if (result == null || result is! Map) return;
+
+    setState(() {
+      _selectedPaymentMethod = (result['payment_method'] ?? 'COD').toString();
+      _selectedCardId = result['card_id'] as int?;
+
+      if (_selectedPaymentMethod == 'COD') {
+        _selectedPaymentLabel = 'Cash on Delivery';
+      } else if (_selectedCardId != null) {
+        _selectedPaymentLabel = 'Card Selected';
+      } else {
+        _selectedPaymentLabel = 'Card';
+      }
+    });
   }
 
   Future<void> _placeOrder() async {
@@ -82,67 +76,77 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     if (cart.cartId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Cart not initialized. Please login again.")),
+        const SnackBar(
+          content: Text("Cart not initialized. Please login again."),
+        ),
       );
       return;
     }
+
     if (cart.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Your cart is empty.")),
       );
       return;
     }
+
     if (_address.text.trim().length < 5) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please enter a valid delivery address.")),
       );
       return;
     }
-    if (_cards.isEmpty) {
+
+    if (_selectedPaymentMethod == 'CARD' && _selectedCardId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please add a payment method.")),
+        const SnackBar(content: Text("Please select a card.")),
       );
       return;
     }
 
     setState(() {
       _placingOrder = true;
-      _statusText = 'Processing payment…';
+      _statusText = _selectedPaymentMethod == 'CARD'
+          ? 'Processing payment…'
+          : 'Placing order…';
     });
 
     final subtotal = cart.totalPrice;
     final tax = subtotal * _taxRate;
     final total = subtotal + tax + _deliveryFee;
-    final selectedCard = _cards[_selectedIndex];
-    final cardId = selectedCard['card_id'] as int;
 
     String? transactionId;
 
-    // ── Step 1: Process payment ─────────────────────────────────
-    try {
-      final payRes = await PaymentService.processPayment(
-        cartId: cart.cartId!,
-        amount: total,
-        cardId: cardId,
-      );
-      transactionId = payRes['transaction_id'] as String?;
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_readableError(e)),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      setState(() {
-        _placingOrder = false;
-        _statusText = 'Place Order';
-      });
-      return;
+    // ── Step 1: Process payment only for CARD ─────────────────────
+    if (_selectedPaymentMethod == 'CARD') {
+      try {
+        final payRes = await PaymentService.processPayment(
+          cartId: cart.cartId!,
+          amount: total,
+          cardId: _selectedCardId!,
+        );
+        transactionId = payRes['transaction_id'] as String?;
+      } catch (e) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_readableError(e)),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        setState(() {
+          _placingOrder = false;
+          _statusText = 'Place Order';
+        });
+        return;
+      }
     }
 
-    // ── Step 2: Place order ─────────────────────────────────────
+    // ── Step 2: Place order ───────────────────────────────────────
     setState(() => _statusText = 'Placing order…');
+
     try {
       final res = await CartService.placeOrder(
         cartId: cart.cartId!,
@@ -154,12 +158,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       final orderId = res["order_id"]?.toString();
       final totalNum = res["total_price"] ?? res["total"];
-      final finalTotal =
-          (totalNum is num) ? totalNum.toDouble() : total;
+      final finalTotal = (totalNum is num) ? totalNum.toDouble() : total;
 
       await cart.refreshAfterOrderSuccess();
 
-      // Fire-and-forget: link payment to order
       if (transactionId != null && orderId != null) {
         CartService.linkPaymentToOrder(
           transactionId: transactionId,
@@ -177,15 +179,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             orderNumber: orderId ?? _generateLocalOrderNumber(),
             totalAmount: finalTotal,
             estimatedPrepTimeMinutes:
-                (res["estimated_prep_time_minutes"] is num)
-                    ? (res["estimated_prep_time_minutes"] as num).toInt()
-                    : 0,
+            (res["estimated_prep_time_minutes"] is num)
+                ? (res["estimated_prep_time_minutes"] as num).toInt()
+                : 0,
             transactionId: transactionId,
           ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -210,13 +213,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _readableError(Object e) {
     final text = e.toString().toLowerCase();
     if (text.contains("cart is empty")) return "Your cart is empty.";
-    if (text.contains("cart not found")) return "Your cart session expired. Please try again.";
-    if (text.contains("not active")) return "This cart is no longer active. Please try again.";
+    if (text.contains("cart not found")) {
+      return "Your cart session expired. Please try again.";
+    }
+    if (text.contains("not active")) {
+      return "This cart is no longer active. Please try again.";
+    }
     if (text.contains("unauthorized") || text.contains("401")) {
       return "Your session expired. Please login again.";
     }
     if (text.contains("timeout")) return "Request timed out. Please try again.";
-    if (text.contains("payment failed")) return "Payment failed. Please try again.";
+    if (text.contains("payment failed")) {
+      return "Payment failed. Please try again.";
+    }
     return "Could not place order. Please try again.";
   }
 
@@ -265,7 +274,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Delivery Address ──────────────────────
                     _buildSectionCard(
                       context,
                       title: "Delivery Address",
@@ -277,92 +285,95 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           labelText: "Address",
                           labelStyle: theme.textTheme.bodySmall,
                           border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           filled: true,
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // ── Payment Method ────────────────────────
                     _buildSectionCard(
                       context,
                       title: "Payment Method",
-                      child: _loadingCards
-                          ? const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: Center(child: CircularProgressIndicator()),
-                            )
-                          : Column(
-                              children: [
-                                if (_cards.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Text(
-                                      "No payment methods yet. Add one to proceed.",
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(color: theme.hintColor),
+                      child: Column(
+                        children: [
+                          InkWell(
+                            onTap: _placingOrder ? null : _selectPaymentMethod,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: color.primary.withOpacity(0.6),
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _selectedPaymentMethod == 'COD'
+                                        ? Icons.local_shipping_outlined
+                                        : Icons.credit_card_outlined,
+                                    color: color.primary,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _selectedPaymentLabel,
+                                          style: theme.textTheme.bodyLarge
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _selectedPaymentMethod == 'COD'
+                                              ? 'Pay in cash when your order arrives'
+                                              : 'Tap to change payment method',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: theme.hintColor,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                for (int i = 0; i < _cards.length; i++)
-                                  _buildPaymentTile(
-                                    context,
-                                    "${_cards[i]['card_type']} •••• ${_cards[i]['last4']}",
-                                    "Expires ${_cards[i]['expiry']}",
-                                    selected: _selectedIndex == i,
-                                    onTap: _placingOrder
-                                        ? () {}
-                                        : () => setState(() => _selectedIndex = i),
-                                    onDelete: _placingOrder
-                                        ? null
-                                        : () => _deleteCard(
-                                            _cards[i]['card_id'] as int),
+                                  Icon(
+                                    Icons.chevron_right,
+                                    color: color.primary,
                                   ),
-                                const SizedBox(height: 12),
-                                OutlinedButton.icon(
-                                  onPressed: _placingOrder
-                                      ? null
-                                      : () async {
-                                          final result = await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const AddPaymentScreen(),
-                                            ),
-                                          );
-                                          if (result != null &&
-                                              result is Map) {
-                                            await _loadCards();
-                                          }
-                                        },
-                                  icon: Icon(Icons.add, color: color.primary),
-                                  label: Text(
-                                    "Add New Payment Method",
-                                    style: TextStyle(color: color.primary),
-                                  ),
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: color.primary),
-                                    foregroundColor: color.primary,
-                                    minimumSize:
-                                        const Size(double.infinity, 48),
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
 
-                    // ── Order Summary ─────────────────────────
                     _buildSectionCard(
                       context,
                       title: "Order Summary",
                       child: Column(
                         children: [
                           _SummaryRow(
-                              "Subtotal", "Rs ${subtotal.toStringAsFixed(2)}"),
-                          _SummaryRow("Tax", "Rs ${tax.toStringAsFixed(2)}"),
-                          _SummaryRow("Delivery Fee",
-                              "Rs ${_deliveryFee.toStringAsFixed(2)}"),
+                            "Subtotal",
+                            "Rs ${subtotal.toStringAsFixed(2)}",
+                          ),
+                          _SummaryRow(
+                            "Tax",
+                            "Rs ${tax.toStringAsFixed(2)}",
+                          ),
+                          _SummaryRow(
+                            "Delivery Fee",
+                            "Rs ${_deliveryFee.toStringAsFixed(2)}",
+                          ),
                           const Divider(),
                           _SummaryRow(
                             "Total",
@@ -375,7 +386,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             Text(
                               cart.error!,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.error),
+                                color: theme.colorScheme.error,
+                              ),
                             ),
                           ],
                         ],
@@ -383,7 +395,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // ── Confirm Button ────────────────────────
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -395,24 +406,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           foregroundColor: color.onPrimary,
                           minimumSize: const Size(double.infinity, 52),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         child: _placingOrder
                             ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(_statusText,
-                                      style: const TextStyle(
-                                          color: Colors.white)),
-                                ],
-                              )
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              _statusText,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        )
                             : const Text("Place Order"),
                       ),
                     ),
@@ -426,13 +441,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // ── Helper Widgets ──────────────────────────────────────────────
-
   static Widget _buildSectionCard(
-    BuildContext context, {
-    required String title,
-    required Widget child,
-  }) {
+      BuildContext context, {
+        required String title,
+        required Widget child,
+      }) {
     final theme = Theme.of(context);
     return Card(
       color: theme.cardColor,
@@ -457,61 +470,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
     );
   }
-
-  static Widget _buildPaymentTile(
-    BuildContext context,
-    String title,
-    String subtitle, {
-    required bool selected,
-    required VoidCallback onTap,
-    VoidCallback? onDelete,
-  }) {
-    final theme = Theme.of(context);
-    final color = theme.colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: selected ? color.primary : color.primary.withOpacity(0.4),
-        ),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: ListTile(
-        leading: Icon(Icons.credit_card_outlined, color: color.primary),
-        title: Text(title,
-            style: theme.textTheme.bodyLarge
-                ?.copyWith(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle,
-            style:
-                theme.textTheme.bodySmall?.copyWith(color: theme.hintColor)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (selected) Icon(Icons.check_circle, color: color.primary),
-            if (onDelete != null)
-              IconButton(
-                icon: Icon(Icons.delete_outline, color: color.error, size: 20),
-                onPressed: onDelete,
-              ),
-          ],
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
 }
 
 class _SummaryRow extends StatelessWidget {
-  final String label, value;
+  final String label;
+  final String value;
   final bool isBold;
   final Color color;
 
   const _SummaryRow(
-    this.label,
-    this.value, {
-    this.isBold = false,
-    this.color = Colors.grey,
-  });
+      this.label,
+      this.value, {
+        this.isBold = false,
+        this.color = Colors.grey,
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -521,16 +493,20 @@ class _SummaryRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                  color: color,
-                  fontWeight:
-                      isBold ? FontWeight.bold : FontWeight.normal)),
-          Text(value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                  color: color,
-                  fontWeight:
-                      isBold ? FontWeight.bold : FontWeight.normal)),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: color,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: color,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
         ],
       ),
     );

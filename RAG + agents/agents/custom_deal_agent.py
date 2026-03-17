@@ -69,89 +69,163 @@ class CustomDealAgent:
 
     def _parse_requirements(self, user_query: str):
         print(f"[DealAgent] Parsing query: {user_query}")
-        
+
         system_prompt = """
         You are a Deal Architect. Extract requirements from the user's custom deal request.
         Output ONLY valid JSON.
-        
+
         EXTRACTION RULES:
-        - "explicit_items": Extract food item NAMES/KEYWORDS the user specifically mentions. 
-          Examples: "biryani and burger" -> ["biryani", "burger"]
-                   "chicken items" -> ["chicken"]
-                   "fast food" -> [] (this is a category, not an item)
-        
-        - "num_people": Extract if user mentions "X person deal", "for 3 people", etc. Default: 1
-          IMPORTANT: Extract the NUMBER even if user says "for 3 people including..." or "3 people with..."
-          Examples: "for 3 people" -> 3
-                   "make a deal for 5 people" -> 5
-                   "3 people with biryani" -> 3
-        
-        - "cuisine": Extract cuisine preference if mentioned. Use these exact values:
-          "Desi" (for Pakistani/Desi food)
-          "Fast Food" (for burgers, fries, etc.)
+        - "explicit_items": Extract food item names/keywords the user specifically mentions.
+          Examples:
+          "biryani and burger" -> ["biryani", "burger"]
+          "burger deal for 2" -> ["burger"]
+          "zinger combo for 3" -> ["zinger"]
+          "chicken items" -> ["chicken"]
+          "fast food" -> []
+
+        - "num_people": Extract if user mentions "X person deal", "for 3 people", "for 2", etc.
+          Default: 1
+
+        - "cuisine": Extract cuisine preference if mentioned or strongly implied.
+          Use these exact values:
+          "Desi"
+          "Fast Food"
           "Chinese"
-          "BBQ" (for grilled/barbecue items)
+          "BBQ"
           "Drinks"
-          
-          IMPORTANT: If user says "only" or "including", that's a constraint!
-          Examples: "including fast food only" -> cuisine is "Fast Food"
-                   "3 people including pakistani" -> cuisine is "Desi"
-        
-        - "category": Extract category if mentioned: "main", "appetizer", "drinks", etc.
-        
-        - "needs_clarification": Set to true if request is too vague (e.g., "make me a deal" with no other info)
-        
-        - "clarification_type": If needs_clarification is true, what to ask about:
-          "items" - what items they want
-          "cuisine" - what type of food
-          "count" - how many people
-        
+
+          IMPORTANT INFERENCE RULES:
+          - burger, zinger, fries, pizza, wings, sandwich -> "Fast Food"
+          - biryani, karahi, handi, naan, roti, desi, pakistani -> "Desi"
+          - bbq, tikka, boti, kebab, grilled -> "BBQ"
+          - chowmein, fried rice, manchurian -> "Chinese"
+
+        - "category": Extract category if directly mentioned: "main", "appetizer", "drinks", etc.
+
+        - "needs_clarification": true only if the request is too vague to build a deal.
+          If user provides both an item/cuisine hint and person count, DO NOT ask for clarification.
+
+        - "clarification_type": one of:
+          "items"
+          "cuisine"
+          "count"
+
         JSON SCHEMA:
-        {{
+        {
             "explicit_items": ["item1", "item2"],
             "num_people": 1,
             "cuisine": null,
             "category": null,
             "needs_clarification": false,
             "clarification_type": null
-        }}
-        
+        }
+
         EXAMPLES:
+
         Input: "Make me a deal with biryani and burger"
-        Output: {{"explicit_items": ["biryani", "burger"], "num_people": 1, "cuisine": null, "category": null, "needs_clarification": false, "clarification_type": null}}
-        
+        Output: {"explicit_items": ["biryani", "burger"], "num_people": 1, "cuisine": null, "category": null, "needs_clarification": false, "clarification_type": null}
+
         Input: "Create a 3 person deal"
-        Output: {{"explicit_items": [], "num_people": 3, "cuisine": null, "category": null, "needs_clarification": true, "clarification_type": "cuisine"}}
-        
+        Output: {"explicit_items": [], "num_people": 3, "cuisine": null, "category": null, "needs_clarification": true, "clarification_type": "cuisine"}
+
         Input: "I want a Pakistani food deal"
-        Output: {{"explicit_items": [], "num_people": 1, "cuisine": "Desi", "category": null, "needs_clarification": false, "clarification_type": null}}
-        
+        Output: {"explicit_items": [], "num_people": 1, "cuisine": "Desi", "category": null, "needs_clarification": false, "clarification_type": null}
+
         Input: "make a custom deal for 3 people including fast food only"
-        Output: {{"explicit_items": [], "num_people": 3, "cuisine": "Fast Food", "category": null, "needs_clarification": false, "clarification_type": null}}
-        
+        Output: {"explicit_items": [], "num_people": 3, "cuisine": "Fast Food", "category": null, "needs_clarification": false, "clarification_type": null}
+
         Input: "make a custom deal for 5 people including pakistani food"
-        Output: {{"explicit_items": [], "num_people": 5, "cuisine": "Desi", "category": null, "needs_clarification": false, "clarification_type": null}}
-        
+        Output: {"explicit_items": [], "num_people": 5, "cuisine": "Desi", "category": null, "needs_clarification": false, "clarification_type": null}
+
         Input: "make a custom deal for 5 people including chinese food"
-        Output: {{"explicit_items": [], "num_people": 5, "cuisine": "Chinese", "category": null, "needs_clarification": false, "clarification_type": null}}
-        
+        Output: {"explicit_items": [], "num_people": 5, "cuisine": "Chinese", "category": null, "needs_clarification": false, "clarification_type": null}
 
         Input: "make a custom deal for 5 people including bbq food"
-        Output: {{"explicit_items": [], "num_people": 5, "cuisine": "BBQ", "category": null, "needs_clarification": false, "clarification_type": null}}
-        
+        Output: {"explicit_items": [], "num_people": 5, "cuisine": "BBQ", "category": null, "needs_clarification": false, "clarification_type": null}
+
+        Input: "burger deal for 2"
+        Output: {"explicit_items": ["burger"], "num_people": 2, "cuisine": "Fast Food", "category": null, "needs_clarification": false, "clarification_type": null}
+
+        Input: "bbq combo for 3"
+        Output: {"explicit_items": [], "num_people": 3, "cuisine": "BBQ", "category": null, "needs_clarification": false, "clarification_type": null}
+
+        Input: "Pakistani meal for 4"
+        Output: {"explicit_items": [], "num_people": 4, "cuisine": "Desi", "category": null, "needs_clarification": false, "clarification_type": null}
         """
-        
+
         try:
-            prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{input}")])
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", system_prompt),
+                ("human", "{input}")
+            ])
             chain = prompt | self.llm
             response = chain.invoke({"input": user_query})
             data = self._extract_json(response.content)
             print(f"[DealAgent] Parsed requirements: {data}")
-            return data if data else {"explicit_items": [], "num_people": 1, "needs_clarification": False}
+
+            return data if data else {
+                "explicit_items": [],
+                "num_people": 1,
+                "cuisine": None,
+                "category": None,
+                "needs_clarification": False,
+                "clarification_type": None
+            }
         except Exception as e:
             print(f"[DealAgent] Parse error: {e}")
-            return {"explicit_items": [], "num_people": 1, "needs_clarification": False}
-    
+            return {
+                "explicit_items": [],
+                "num_people": 1,
+                "cuisine": None,
+                "category": None,
+                "needs_clarification": False,
+                "clarification_type": None
+            }
+
+    def _rule_based_parse(self, user_query: str):
+        query = (user_query or "").lower().strip()
+
+        result = {
+            "explicit_items": [],
+            "num_people": 1,
+            "cuisine": None,
+            "category": None,
+            "needs_clarification": False,
+            "clarification_type": None
+        }
+
+        import re
+        count_match = re.search(r'\b(\d+)\b', query)
+        if count_match:
+            result["num_people"] = int(count_match.group(1))
+
+        if any(word in query for word in ["pakistani", "desi", "biryani", "karahi", "handi", "naan", "roti"]):
+            result["cuisine"] = "Desi"
+        elif any(word in query for word in ["burger", "zinger", "pizza", "fries", "wings", "sandwich", "fast food"]):
+            result["cuisine"] = "Fast Food"
+        elif any(word in query for word in ["bbq", "tikka", "boti", "kebab", "grilled"]):
+            result["cuisine"] = "BBQ"
+        elif any(word in query for word in ["chinese", "fried rice", "chowmein", "manchurian"]):
+            result["cuisine"] = "Chinese"
+        elif any(word in query for word in ["drink", "drinks", "beverage", "beverages", "juice", "tea"]):
+            result["cuisine"] = "Drinks"
+
+        known_items = [
+            "burger", "zinger", "pizza", "biryani", "karahi", "handi",
+            "fries", "wings", "sandwich", "tikka", "boti", "kebab",
+            "fried rice", "chowmein", "manchurian"
+        ]
+
+        for item in known_items:
+            if item in query:
+                result["explicit_items"].append(item)
+
+        if result["cuisine"] is None and not result["explicit_items"]:
+            result["needs_clarification"] = True
+            result["clarification_type"] = "cuisine"
+
+        return result
+
     def _normalize_cuisine(self, cuisine):
         """Map user-friendly cuisine names to database values."""
         if not cuisine:
@@ -304,7 +378,39 @@ class CustomDealAgent:
 
     def create_deal(self, user_query: str):
         try:
-            reqs = self._parse_requirements(user_query)
+            user_query = (user_query or "").strip()
+            if not user_query:
+                return {
+                    "success": False,
+                    "message": "Please tell me what kind of deal you want, for example: burger deal for 2 or Pakistani meal for 4."
+                 }
+
+            rule_reqs = self._rule_based_parse(user_query)
+            llm_reqs = self._parse_requirements(user_query)
+
+            reqs = {
+                "explicit_items": llm_reqs.get("explicit_items") or rule_reqs.get("explicit_items") or [],
+                "num_people": llm_reqs.get("num_people") or rule_reqs.get("num_people") or 1,
+                "cuisine": llm_reqs.get("cuisine") or rule_reqs.get("cuisine"),
+                "category": llm_reqs.get("category") or rule_reqs.get("category"),
+                "needs_clarification": llm_reqs.get("needs_clarification", False),
+                "clarification_type": llm_reqs.get("clarification_type"),
+            }
+
+            if reqs["num_people"] == 1 and rule_reqs.get("num_people", 1) > 1:
+                reqs["num_people"] = rule_reqs["num_people"]
+
+            if not reqs.get("cuisine") and rule_reqs.get("cuisine"):
+                reqs["cuisine"] = rule_reqs["cuisine"]
+
+            if not reqs.get("explicit_items") and rule_reqs.get("explicit_items"):
+                reqs["explicit_items"] = rule_reqs["explicit_items"]
+
+            if rule_reqs.get("cuisine") or rule_reqs.get("explicit_items"):
+                reqs["needs_clarification"] = False
+                reqs["clarification_type"] = None
+
+            print(f"[DealAgent] Final merged requirements: {reqs}")
             
             # Normalize cuisine to match database values
             if reqs.get("cuisine"):
@@ -412,7 +518,7 @@ class CustomDealAgent:
                             print(f"[DealAgent] Added Desi bread")
                 
                 # Priority 2: Ensure mains are balanced per person (at least 1 main per 2 people)
-                mains_per_person = max(1, num_people // 2)
+                mains_per_person = num_people
                 if mains_count < mains_per_person and needed > 0:
                     mains_needed = min(needed, mains_per_person - mains_count)
                     # STRICTLY use primary cuisine if specified
@@ -430,23 +536,23 @@ class CustomDealAgent:
                 
                 # Priority 3: Add sides (complements the meal) - STRICT CUISINE ADHERENCE
                 if needed > 0 and side_count < 1:
-                    # Only add cuisine-specific sides, don't fallback to generic
                     if primary_cuisine:
                         side_fillers = self._find_items_in_db(cuisine=primary_cuisine, category="side", limit=1)
                         print(f"[DealAgent] Searching for {primary_cuisine} sides")
                     else:
                         side_fillers = []
-                    
+
+                    if not side_fillers:
+                        side_fillers = self._find_items_in_db(category="side", limit=1)
+                        print("[DealAgent] No cuisine-specific side found, using generic side")
+
                     if side_fillers:
                         for f in side_fillers:
                             if f['item_id'] not in [x['item_id'] for x in selected_items]:
                                 selected_items.append(f)
                                 needed -= 1
                                 side_count += 1
-                        print(f"[DealAgent] Added side dish from {primary_cuisine}")
-                    else:
-                        print(f"[DealAgent] No {primary_cuisine} sides available, skipping to maintain cuisine purity")
-                
+                        print("[DealAgent] Added side dish")
                 # Priority 4: Add beverages (essential for group meals)
                 if needed > 0:
                     beverages_needed = min(needed, max(1, num_people // 2))
@@ -537,11 +643,10 @@ class CustomDealAgent:
 
             return {
                 "success": True,
-                "message": msg,
-                "deal_data": {
-                    "items": final_items,
-                    "total_price": deal_price
-                }
+                "message": msg,                
+                "items": final_items,
+                "total_price": round(deal_price,2)
+                
             }
 
         except Exception as e:

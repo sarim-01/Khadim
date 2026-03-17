@@ -22,12 +22,16 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
   // ── Luhn algorithm ──────────────────────────────────────────────
   bool _luhn(String number) {
     final digits = number.replaceAll(' ', '');
-    if (digits.length != 16) return false;
+    if (digits.length < 13 || digits.length > 19) return false;
+
     int sum = 0;
     bool alternate = false;
+
     for (int i = digits.length - 1; i >= 0; i--) {
-      int n = int.tryParse(digits[i]) ?? -1;
-      if (n < 0) return false;
+      final int? parsed = int.tryParse(digits[i]);
+      if (parsed == null) return false;
+
+      int n = parsed;
       if (alternate) {
         n *= 2;
         if (n > 9) n -= 9;
@@ -35,9 +39,9 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
       sum += n;
       alternate = !alternate;
     }
+
     return sum % 10 == 0;
   }
-
   // ── Brand detection ─────────────────────────────────────────────
   String _detectBrand(String number) {
     final d = number.replaceAll(' ', '');
@@ -75,19 +79,36 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
   // ── Expiry validation ───────────────────────────────────────────
   String? _validateExpiry(String? value) {
-    if (value == null || value.isEmpty) return 'Enter expiry date';
+    if (value == null || value.trim().isEmpty) return 'Enter expiry date';
+
     final parts = value.split('/');
     if (parts.length != 2) return 'Use MM/YY format';
+
     final month = int.tryParse(parts[0]);
     final year = int.tryParse(parts[1]);
+
     if (month == null || year == null) return 'Use MM/YY format';
-    if (month < 1 || month > 12) return 'Card is expired or invalid';
+    if (month < 1 || month > 12) return 'Invalid expiry month';
+
     final now = DateTime.now();
-    final currentYear = now.year % 100;
-    if (year < currentYear + 1) return 'Card is expired or invalid';
+    final fourDigitYear = 2000 + year;
+
+    final expiryDate = DateTime(fourDigitYear, month + 1, 0);
+    final lastMomentOfMonth = DateTime(
+      expiryDate.year,
+      expiryDate.month,
+      expiryDate.day,
+      23,
+      59,
+      59,
+    );
+
+    if (lastMomentOfMonth.isBefore(now)) {
+      return 'Card is expired';
+    }
+
     return null;
   }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -282,9 +303,24 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                       maxLength: 19,
                       onChanged: (_) => setState(() {}),
                       validator: (v) {
-                        final digits = (v ?? '').replaceAll(' ', '');
-                        if (digits.length != 16) return 'Enter a 16-digit card number';
-                        if (!_luhn(digits)) return 'Invalid card number';
+                        final digits = (v ?? '').replaceAll(' ', '').trim();
+
+                        if (digits.isEmpty) {
+                          return 'Enter card number';
+                        }
+
+                        if (!RegExp(r'^[0-9]+$').hasMatch(digits)) {
+                          return 'Card number must contain digits only';
+                        }
+
+                        if (digits.length < 13 || digits.length > 19) {
+                          return 'Card number must be 13 to 19 digits';
+                        }
+
+                        if (!_luhn(digits)) {
+                          return 'Invalid card number';
+                        }
+
                         return null;
                       },
                     ),
@@ -354,9 +390,17 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                             maxLength: 3,
                             obscureText: true,
                             validator: (v) {
-                              if (v == null || v.length != 3) {
-                                return 'CVV must be 3 digits';
+                              final brand = _detectBrand(_cardNumberController.text);
+                              final requiredLength = brand == 'Amex' ? 4 : 3;
+
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Enter CVV';
                               }
+
+                              if (v.length != requiredLength) {
+                                return 'CVV must be $requiredLength digits';
+                              }
+
                               return null;
                             },
                           ),

@@ -1,94 +1,151 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_rating_bar/flutter_rating_bar.dart';
+import 'package:khaadim/services/feedback_service.dart';
 
-class FeedbackScreen extends StatelessWidget {
-  const FeedbackScreen({super.key});
+class FeedbackScreen extends StatefulWidget {
+  final int? orderId;
+  final String feedbackType;
+
+  const FeedbackScreen({
+    super.key,
+    this.orderId,
+    this.feedbackType = "GENERAL",
+  });
+
+  @override
+  State<FeedbackScreen> createState() => _FeedbackScreenState();
+}
+
+class _FeedbackScreenState extends State<FeedbackScreen> {
+  double _rating = 0;
+  bool _submitting = false;
+  final TextEditingController _commentController = TextEditingController();
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitFeedback() async {
+    final String message = _commentController.text.trim();
+
+    if (_rating <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a rating')),
+      );
+      return;
+    }
+
+    if (message.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please write your feedback')),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+
+    try {
+      await FeedbackService.submitFeedback(
+        rating: _rating.round(),
+        message: message,
+        orderId: widget.orderId,
+        feedbackType: widget.feedbackType,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Feedback submitted successfully')),
+      );
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = theme.colorScheme;
-    final TextEditingController commentController = TextEditingController();
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Rate Your Order'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: color.primary,
-        foregroundColor: color.onPrimary,
-        onPressed: () {},
-        child: const Icon(Icons.mic_none_rounded),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                child: Column(
-                  children: [
-                    Text('How was your meal?',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text('Order #N/A',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.hintColor)),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        5,
-                            (i) => Icon(Icons.star_border_rounded,
-                            color: color.primary, size: 32),
-                      ),
-                    ),
-                  ],
-                ),
+            Text(
+              'How was your experience?',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 16),
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: TextField(
-                  controller: commentController,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    hintText: 'Tell us more about your experience...',
-                    border: InputBorder.none,
-                  ),
-                ),
+            const SizedBox(height: 8),
+            Text(
+              widget.orderId != null
+                  ? 'Order #${widget.orderId}'
+                  : 'Share your feedback with us',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.hintColor,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
+            Center(
+              child: RatingBar.builder(
+                initialRating: 0,
+                minRating: 1,
+                allowHalfRating: false,
+                itemCount: 5,
+                itemPadding: const EdgeInsets.symmetric(horizontal: 4),
+                itemBuilder: (context, _) => const Icon(
+                  Icons.star,
+                  color: Colors.amber,
+                ),
+                onRatingUpdate: (value) {
+                  _rating = value;
+                },
+              ),
+            ),
+            const SizedBox(height: 28),
+            TextField(
+              controller: _commentController,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText: 'Write your feedback...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+              ),
+            ),
+            const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Feedback submitted!')),
-                  );
-                  Navigator.pop(context);
-                },
+                onPressed: _submitting ? null : _submitFeedback,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: color.primary,
-                  foregroundColor: color.onPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  minimumSize: const Size(double.infinity, 50),
                 ),
-                child: const Text('Submit Feedback'),
+                child: _submitting
+                    ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Text('Submit Feedback'),
               ),
             ),
           ],
@@ -97,5 +154,3 @@ class FeedbackScreen extends StatelessWidget {
     );
   }
 }
-
-
