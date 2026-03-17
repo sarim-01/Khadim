@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:khaadim/utils/app_images.dart';
 import 'package:khaadim/screens/navigation/main_screen.dart';
-import 'package:khaadim/screens/support/feedback_screen.dart';
 import 'order_tracking_screen.dart';
 
 class OrderConfirmationScreen extends StatelessWidget {
@@ -255,33 +254,6 @@ class OrderConfirmationScreen extends StatelessWidget {
                     child: const Text('Track Order'),
                   ),
                 ),
-
-                const SizedBox(height: 12),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => FeedbackScreen(orderId: orderId),
-                        ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: color.primary),
-                      foregroundColor: color.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: const Text('Leave Feedback'),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
 
                 SizedBox(
                   width: double.infinity,

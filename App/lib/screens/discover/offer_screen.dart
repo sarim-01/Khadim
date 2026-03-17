@@ -4,6 +4,7 @@ import 'package:khaadim/models/offer_model.dart';
 import 'package:khaadim/models/deal_model.dart';
 import 'package:khaadim/services/offer_service.dart';
 import 'package:khaadim/services/deal_service.dart';
+import 'package:khaadim/services/favorites_service.dart';
 
 class OffersScreen extends StatefulWidget {
   const OffersScreen({super.key});
@@ -120,7 +121,7 @@ class _OffersScreenState extends State<OffersScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            "Exclusive Offers & Deals",
+            "Economical Deals",
             style: theme.textTheme.bodyLarge?.copyWith(
               fontWeight: FontWeight.w600,
             ),
@@ -263,13 +264,9 @@ class _OffersScreenState extends State<OffersScreen> {
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: _buildDealCard(
-                    context,
+                  child: _DealCard(
+                    deal: deal,
                     image: img,
-                    title: deal.dealName,
-                    subtitle: deal.items,
-                    newPrice: "Rs ${deal.dealPrice}",
-                    discount: "${deal.servingSize} Person",
                   ),
                 );
               }),
@@ -480,6 +477,198 @@ class _OffersScreenState extends State<OffersScreen> {
                         ),
                       ),
                       child: const Text("Add"),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stateful deal card with heart toggle
+// ─────────────────────────────────────────────────────────────────────────────
+class _DealCard extends StatefulWidget {
+  final DealModel deal;
+  final String image;
+  const _DealCard({required this.deal, required this.image});
+
+  @override
+  State<_DealCard> createState() => _DealCardState();
+}
+
+class _DealCardState extends State<_DealCard> {
+  bool _isFav = false;
+  bool _favLoading = true;
+  bool _toggling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavStatus();
+  }
+
+  Future<void> _loadFavStatus() async {
+    try {
+      final res = await FavouritesService.getFavouriteStatus(
+        dealId: widget.deal.dealId,
+      );
+      if (mounted) {
+        setState(() {
+          _isFav = res['is_favourite'] == true;
+          _favLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _favLoading = false);
+    }
+  }
+
+  Future<void> _toggle() async {
+    if (_toggling) return;
+    setState(() => _toggling = true);
+    try {
+      final res = await FavouritesService.toggleFavourite(
+        dealId: widget.deal.dealId,
+      );
+      if (!mounted) return;
+      final added = res['action'] == 'added';
+      setState(() => _isFav = added);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            added ? 'Added to favourites' : 'Removed from favourites'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 1),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.toString()),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _toggling = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final deal = widget.deal;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+            ),
+            child: Image.asset(
+              widget.image,
+              height: 160,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        deal.dealName,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${deal.servingSize} Person',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    // Heart button
+                    _favLoading
+                        ? const SizedBox(
+                            width: 24, height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : GestureDetector(
+                            onTap: _toggle,
+                            child: Icon(
+                              _isFav
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: _isFav ? Colors.redAccent : Colors.grey,
+                              size: 22,
+                            ),
+                          ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  deal.items,
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Rs ${deal.dealPrice}',
+                        style: TextStyle(
+                          color: theme.colorScheme.primary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {},
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orangeAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 6),
+                      ),
+                      child: const Text('Add'),
                     ),
                   ],
                 ),

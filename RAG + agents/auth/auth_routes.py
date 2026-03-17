@@ -162,11 +162,14 @@ def me(current_user: Dict[str, Any] = Depends(get_current_user)):
     with SQL_ENGINE.connect() as conn:
         prefs_row = conn.execute(
             text("SELECT preferences FROM auth.user_preferences WHERE user_id = :uid"),
-            {"user_id": user_id},
+            {"uid": user_id},
         ).mappings().fetchone()
         delivery_address = ""
         if prefs_row and prefs_row["preferences"]:
-            delivery_address = prefs_row["preferences"].get("delivery_address", "") or ""
+            prefs = prefs_row["preferences"]
+            # psycopg2 returns JSONB as a dict; guard against string fallback
+            if isinstance(prefs, dict):
+                delivery_address = prefs.get("delivery_address", "") or ""
 
         order_count = conn.execute(
             text("""
@@ -177,10 +180,16 @@ def me(current_user: Dict[str, Any] = Depends(get_current_user)):
             {"uid": user_id},
         ).scalar() or 0
 
+    created_at = current_user.get("created_at")
+
     return {
         "user": {
-            **current_user,
             "user_id": user_id,
+            "full_name": current_user.get("full_name"),
+            "email": current_user.get("email"),
+            "phone": current_user.get("phone"),
+            "is_active": current_user.get("is_active"),
+            "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
             "delivery_address": delivery_address,
             "order_count": int(order_count),
         }

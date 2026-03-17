@@ -52,4 +52,23 @@ class AuthService {
       retryOnNetworkError: true,
     );
   }
+
+  /////// UPDATE PROFILE ///////
+  static Future<Map<String, dynamic>> updateProfile({
+    String? fullName,
+    String? email,
+    String? deliveryAddress,
+  }) async {
+    final body = <String, dynamic>{};
+    if (fullName != null) body['full_name'] = fullName;
+    if (email != null) body['email'] = email;
+    if (deliveryAddress != null) body['delivery_address'] = deliveryAddress;
+
+    return ApiClient.patchJson(
+      '/auth/me',
+      auth: true,
+      timeout: ApiClient.defaultTimeout,
+      body: body,
+    );
+  }
 }
