@@ -83,6 +83,24 @@ class ApiClient {
     );
   }
 
+  static Future<Map<String, dynamic>> patchJson(
+      String path, {
+        required Map<String, dynamic> body,
+        bool auth = true,
+        Map<String, String>? extraHeaders,
+        Duration? timeout,
+      }) async {
+    return _request(
+      method: 'PATCH',
+      path: path,
+      auth: auth,
+      extraHeaders: extraHeaders,
+      timeout: timeout ?? defaultTimeout,
+      body: body,
+      retryOnNetworkError: false,
+    );
+  }
+
   static Future<Map<String, dynamic>> deleteJson(
       String path, {
         bool auth = true,
@@ -121,6 +139,8 @@ class ApiClient {
           return http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
         case 'PUT':
           return http.put(uri, headers: headers, body: jsonEncode(body ?? {}));
+        case 'PATCH':
+          return http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
         case 'DELETE':
           return http.delete(uri, headers: headers);
         default:
