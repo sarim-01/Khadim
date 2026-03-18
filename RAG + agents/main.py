@@ -32,7 +32,7 @@ from feedback.feedback_routes import router as feedback_router
 from custom_deal.custom_deal_routes import router as custom_deal_router
 from favourites.favourites_routes import router as favourites_router
 from agents.upsell_agent import UpsellAgent
-from personalization.recommendation_fallback import RecommendationFallback
+from personalization.personalization_agent import PersonalizationAgent
 from agents.recommender_agent import RecommendationEngine
 from agents.custom_deal_agent import CustomDealAgent
 from auth.auth_routes import get_current_user
@@ -64,7 +64,7 @@ app.include_router(custom_deal_router)
 app.include_router(favourites_router)
 
 
-# ── Phase 2: Personalization recommendations endpoint ─────────────
+# ── Phase 3: LLM-powered Personalization endpoint ─────────────────
 @app.get("/personalization/recommendations", tags=["Personalization"])
 def get_personalized_recommendations(
     top_k: int = 10,
@@ -72,15 +72,16 @@ def get_personalized_recommendations(
 ):
     """
     Returns personalised item + deal recommendations for the authenticated user.
-    Uses tiered fallback: Collab Filter → FAISS → Score-based → Popularity.
+    Uses LLM reasoning (Groq llama-3.3-70b) over profile + FAISS + collab signals.
+    Falls back to deterministic scoring if LLM is unavailable.
     Results are cached for 30 minutes.
     """
     user_id = str(current_user["user_id"])
     db = DatabaseConnection.get_instance()
     conn = db.get_connection()
     try:
-        engine = RecommendationFallback(conn)
-        return engine.get_recommendations(user_id, top_k=top_k)
+        agent = PersonalizationAgent(conn)
+        return agent.recommend(user_id, top_k=top_k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

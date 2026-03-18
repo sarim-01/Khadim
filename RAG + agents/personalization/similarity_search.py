@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # ── FAISS / embedding imports (lazy - may not be installed) ──────
 try:
     from langchain_community.vectorstores import FAISS
-    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings
 
     FAISS_INDEX_PATH = "faiss_index"
     _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
