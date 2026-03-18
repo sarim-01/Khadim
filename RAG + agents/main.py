@@ -81,7 +81,42 @@ def get_personalized_recommendations(
     conn = db.get_connection()
     try:
         agent = PersonalizationAgent(conn)
-        return agent.recommend(user_id, top_k=top_k)
+        res = agent.recommend(user_id, top_k=top_k)
+        
+        # Inject categories for images
+        import psycopg2.extras
+        with conn.cursor() as cur:
+            item_ids = [it.get("item_id") for it in res.get("recommended_items", []) if it.get("item_id")]
+            if item_ids:
+                cur.execute(
+                    "SELECT item_id, item_cuisine FROM public.menu_item WHERE item_id = ANY(%s)",
+                    (item_ids,)
+                )
+                cat_map = {row[0]: row[1] or "fast_food" for row in cur.fetchall()}
+                for it in res.get("recommended_items", []):
+                    if it.get("item_id") in cat_map:
+                        it["category"] = cat_map[it["item_id"]]
+            
+            deal_ids = [d.get("deal_id") for d in res.get("recommended_deals", []) if d.get("deal_id")]
+            if deal_ids:
+                cur.execute(
+                    """
+                    SELECT d.deal_id, 
+                           string_agg(di.quantity::text || ' ' || mi.item_name, ', ' ORDER BY mi.item_id) AS items
+                    FROM deal d
+                    JOIN deal_item di ON di.deal_id = d.deal_id
+                    JOIN menu_item mi ON mi.item_id = di.menu_item_id
+                    WHERE d.deal_id = ANY(%s)
+                    GROUP BY d.deal_id
+                    """,
+                    (deal_ids,)
+                )
+                deal_items_map = {row[0]: row[1] or "" for row in cur.fetchall()}
+                for d in res.get("recommended_deals", []):
+                    d["category"] = "fast_food"
+                    d["items"] = deal_items_map.get(d.get("deal_id"), "")
+                
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

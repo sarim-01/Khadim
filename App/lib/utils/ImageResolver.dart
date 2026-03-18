@@ -42,7 +42,18 @@ class ImageResolver {
   }
 
   // Get deal banner
-  static String getDealImage(String category) {
-    return dealImages[category.toLowerCase()] ?? fallbackImage;
+  static String getDealImage(String dealName) {
+    return dealImages[getDealCategory(dealName)] ?? fallbackImage;
+  }
+
+  // Guess deal category from name
+  static String getDealCategory(String dealName) {
+    final name = dealName.toLowerCase();
+    if (name.contains("fast")) return "fast_food";
+    if (name.contains("bbq")) return "bbq";
+    if (name.contains("chinese")) return "chinese";
+    if (name.contains("desi")) return "desi";
+    if (name.contains("drink")) return "drinks";
+    return "fast_food";
   }
 }

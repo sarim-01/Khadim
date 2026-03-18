@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:khaadim/models/deal_model.dart';
 import 'package:khaadim/providers/cart_provider.dart';
-import 'package:khaadim/services/deal_service.dart';
-import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/screens/cart/cart_screen.dart';
 import 'package:khaadim/screens/discover/upsell_popup.dart';
 import 'package:khaadim/screens/discover/custom_deal_screen.dart';
+import 'package:khaadim/screens/home/widgets/recommended_section.dart';
+import 'package:khaadim/screens/home/widgets/deals_you_love_section.dart';
+import 'package:khaadim/services/personalization_service.dart';
+import 'package:khaadim/models/recommendation_result.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -19,13 +20,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static bool _upsellShown = false;
 
-  List<DealModel> deals = [];
-  bool loading = true;
+  late final Future<RecommendationResult> _recommendationFuture;
 
   @override
   void initState() {
     super.initState();
-    loadDeals();
+    _recommendationFuture = PersonalizationService.getRecommendations(topK: 10);
     // Show upsell popup only once per app session
     if (!_upsellShown) {
       _upsellShown = true;
@@ -40,27 +40,6 @@ class _HomeScreenState extends State<HomeScreen> {
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (_) => const UpsellPopup(),
     );
-  }
-
-  Future<void> loadDeals() async {
-    try {
-      deals = await DealService.fetchDeals();
-    } catch (e) {
-      print("Error loading deals: $e");
-    }
-    setState(() => loading = false);
-  }
-
-  String getDealCategory(String dealName) {
-    final name = dealName.toLowerCase();
-
-    if (name.contains("fast")) return "fast_food";
-    if (name.contains("bbq")) return "bbq";
-    if (name.contains("chinese")) return "chinese";
-    if (name.contains("desi")) return "desi";
-    if (name.contains("drink")) return "drinks";
-
-    return "fast_food";
   }
 
   @override
@@ -89,180 +68,21 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
 
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
+        body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
             // Custom Deal Card at the top
             _buildCustomDealCard(context),
             const SizedBox(height: 20),
 
-            _buildSectionHeader(context, "Recommended Deals"),
-            const SizedBox(height: 12),
+            // ── Phase 4: AI-Personalized sections ──
+            RecommendedForYouSection(future: _recommendationFuture),
+            const SizedBox(height: 20),
 
-            ...deals.map((deal) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: _buildDealCard(
-                  context,
-                  deal: deal, // PASS THE WHOLE DEAL OBJECT
-                  image: ImageResolver.getDealImage(
-                    getDealCategory(deal.dealName),
-                  ),
-                ),
-              );
-            }),
+            DealsYouLoveSection(future: _recommendationFuture),
+            const SizedBox(height: 20),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    final theme = Theme.of(context);
-    return Text(
-      title,
-      style: theme.textTheme.headlineMedium?.copyWith(
-        color: theme.colorScheme.primary,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
-
-  Widget _buildDealCard(
-      BuildContext context, {
-        required DealModel deal,
-        required String image,
-      }) {
-    final theme = Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          /// IMAGE
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-            ),
-            child: Image.asset(
-              image,
-              height: 160,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                /// TITLE + SERVING SIZE
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        deal.dealName,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-
-                    Container(
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        "${deal.servingSize} Person",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 6),
-
-                /// ITEMS IN DEAL
-                Text(
-                  deal.items,
-                  style: theme.textTheme.bodyMedium,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-
-                const SizedBox(height: 10),
-
-                /// PRICE + ADD BUTTON
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Rs ${deal.dealPrice}",
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    Consumer<CartProvider>(
-                      builder: (context, cart, child) {
-                        return ElevatedButton(
-                          onPressed: () {
-                            cart.addDeal(deal); // ADD TO CART
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text("${deal.dealName} added to cart"),
-                                behavior: SnackBarBehavior.floating,
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orangeAccent,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 6,
-                            ),
-                          ),
-                          child: const Text("Add"),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
