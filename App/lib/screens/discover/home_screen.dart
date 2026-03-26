@@ -20,7 +20,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   static bool _upsellShown = false;
 
-  late final Future<RecommendationResult> _recommendationFuture;
+  late Future<RecommendationResult> _recommendationFuture;
 
   @override
   void initState() {
@@ -40,6 +40,20 @@ class _HomeScreenState extends State<HomeScreen> {
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (_) => const UpsellPopup(),
     );
+  }
+
+  Future<void> _handleRefresh() async {
+    // Fetch in the background first — don't call setState until data arrives.
+    // Calling setState early causes a full widget rebuild which resets scroll position.
+    final next = PersonalizationService.getRecommendations(topK: 10);
+    try {
+      await next;
+    } catch (_) {
+      // Ignore fetch errors; indicator will still dismiss
+    }
+    if (mounted) {
+      setState(() { _recommendationFuture = next; });
+    }
   }
 
   @override
@@ -68,20 +82,24 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
 
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Custom Deal Card at the top
-            _buildCustomDealCard(context),
-            const SizedBox(height: 20),
+        body: RefreshIndicator(
+          onRefresh: _handleRefresh,
+          color: theme.colorScheme.primary,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Custom Deal Card at the top
+              _buildCustomDealCard(context),
+              const SizedBox(height: 20),
 
-            // ── Phase 4: AI-Personalized sections ──
-            RecommendedForYouSection(future: _recommendationFuture),
-            const SizedBox(height: 20),
+              // ── Phase 4: AI-Personalized sections ──
+              RecommendedForYouSection(future: _recommendationFuture),
+              const SizedBox(height: 20),
 
-            DealsYouLoveSection(future: _recommendationFuture),
-            const SizedBox(height: 20),
-          ],
+              DealsYouLoveSection(future: _recommendationFuture),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

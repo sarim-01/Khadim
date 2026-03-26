@@ -22,7 +22,6 @@ import psycopg2.extras
 
 from personalization.score_builder import ScoreBuilder
 from personalization.similarity_search import SimilaritySearch
-from personalization.collaborative_filter import CollaborativeFilter
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,6 @@ class RecommendationFallback:
         self.conn = db_conn
         self.score_builder = ScoreBuilder(db_conn)
         self.similarity = SimilaritySearch(db_conn)
-        self.collab = CollaborativeFilter(db_conn)
 
     # ─────────────────────────────────────────────────────────────
     # Public API
@@ -116,28 +114,22 @@ class RecommendationFallback:
         self, user_id: str, top_k: int
     ) -> Tuple[List[Dict[str, Any]], str]:
         """
-        Try collab filter → FAISS → popularity.
+        Try FAISS similarity → score-based → popularity.
         Returns (items_list, source_string).
         """
-        # Tier 1: Collaborative Filtering
-        collab_results, collab_source = self.collab.get_suggestions(user_id, limit=top_k)
-        if collab_results and len(collab_results) >= 3:
-            logger.info("User %s: using collaborative filtering (%d items)", user_id, len(collab_results))
-            return collab_results, "collaborative_filtering"
-
-        # Tier 2: FAISS Similarity
+        # Tier 1: FAISS Similarity
         faiss_results = self.similarity.find_similar(user_id, top_k=top_k)
         if faiss_results:
             logger.info("User %s: using FAISS similarity (%d items)", user_id, len(faiss_results))
             return faiss_results, "faiss_similarity"
 
-        # Tier 3: Score-based from profile
+        # Tier 2: Score-based from profile
         profile_items = self._get_scored_items(user_id, top_k)
         if profile_items:
             logger.info("User %s: using score-based from profile (%d items)", user_id, len(profile_items))
             return profile_items, "score_based"
 
-        # Tier 4: Popularity
+        # Tier 3: Popularity
         logger.info("User %s: falling back to popularity", user_id)
         pop = self._popularity_items(user_id, top_k)
         return pop, "popularity_based"

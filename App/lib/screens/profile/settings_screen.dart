@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:khaadim/services/token_storage.dart';
+import 'package:khaadim/screens/auth/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -90,9 +92,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.logout,
                 title: "Logout",
                 color: Colors.black87,
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text("Logging out (feature coming soon)")));
+                onTap: () async {
+                  // Show loading indicator or directly logout
+                  await TokenStorage.clearToken();
+                  if (!mounted) return;
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false,
+                  );
                 },
               ),
               _buildOptionTile(

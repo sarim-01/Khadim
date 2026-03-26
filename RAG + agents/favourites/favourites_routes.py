@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Any, List
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -6,6 +7,22 @@ from sqlalchemy import text
 
 from infrastructure.db import SQL_ENGINE
 from auth.auth_routes import get_current_user
+from infrastructure.database_connection import DatabaseConnection
+from personalization.score_builder import ScoreBuilder
+
+_executor = ThreadPoolExecutor(max_workers=2)
+
+
+def _rebuild_profile(user_id: str) -> None:
+    """Invalidate recommendation cache and rebuild the user profile.
+    Intended to run in a background thread — never blocks the API response."""
+    try:
+        db_conn = DatabaseConnection.get_instance().get_connection()
+        sb = ScoreBuilder(db_conn)
+        sb.invalidate_cache(user_id)
+        sb.build_user_profile(user_id)
+    except Exception:
+        pass  # Don't let personalization errors surface to the caller
 
 router = APIRouter(prefix="/favourites", tags=["favourites"])
 
@@ -69,7 +86,7 @@ def toggle_favourite(
                 text(f"DELETE FROM public.favourites WHERE {where}"),
                 params,
             )
-            return {"action": "removed", "favourite_id": None}
+            action_result = {"action": "removed", "favourite_id": None}
         else:
             row = conn.execute(
                 text(
@@ -78,7 +95,12 @@ def toggle_favourite(
                 ),
                 params,
             ).mappings().fetchone()
-            return {"action": "added", "favourite_id": int(row["favourite_id"])}
+            action_result = {"action": "added", "favourite_id": int(row["favourite_id"])}
+
+    # Fire-and-forget: invalidate cache + rebuild personalization profile
+    _executor.submit(_rebuild_profile, user_id)
+
+    return action_result
 
 
 # ─────────────────────────────────────────────

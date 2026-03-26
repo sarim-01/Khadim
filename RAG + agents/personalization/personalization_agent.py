@@ -24,7 +24,6 @@ import psycopg2.extras
 
 from personalization.recommendation_fallback import RecommendationFallback
 from personalization.similarity_search import SimilaritySearch
-from personalization.collaborative_filter import CollaborativeFilter
 from personalization.score_builder import ScoreBuilder
 
 logger = logging.getLogger(__name__)
@@ -66,7 +65,6 @@ class PersonalizationAgent:
         self.conn = db_conn
         self.fallback = RecommendationFallback(db_conn)
         self.similarity = SimilaritySearch(db_conn)
-        self.collab = CollaborativeFilter(db_conn)
         self.score_builder = ScoreBuilder(db_conn)
 
         # Initialise LLM
@@ -109,7 +107,6 @@ class PersonalizationAgent:
             # 2. Gather all signals
             profile = self._fetch_full_profile(user_id)
             faiss_results = self.similarity.find_similar(user_id, top_k=top_k)
-            collab_results, collab_source = self.collab.get_suggestions(user_id, limit=top_k)
 
             # 3. Fetch available menu items and deals for the LLM context
             available_items = self._get_all_menu_items()
@@ -119,12 +116,16 @@ class PersonalizationAgent:
             if self._llm and profile:
                 llm_result = self._llm_reason(
                     user_id, profile,
-                    faiss_results, collab_results, collab_source,
+                    faiss_results,
                     available_items, available_deals,
                 )
                 if llm_result:
-                    # Validate IDs
+                    # Validate IDs against DB
                     llm_result = self._validate_ids(llm_result, available_items, available_deals)
+
+                    # Hard-cap results regardless of what the LLM returned
+                    llm_result["recommended_items"] = llm_result.get("recommended_items", [])[:5]
+                    llm_result["recommended_deals"] = llm_result.get("recommended_deals", [])[:3]
 
                     result = {
                         "recommended_items": llm_result.get("recommended_items", []),
@@ -155,8 +156,6 @@ class PersonalizationAgent:
         user_id: str,
         profile: Dict[str, Any],
         faiss_results: List[Dict[str, Any]],
-        collab_results: List[Dict[str, Any]],
-        collab_source: str,
         available_items: List[Dict[str, Any]],
         available_deals: List[Dict[str, Any]],
     ) -> Optional[Dict[str, Any]]:
@@ -166,7 +165,7 @@ class PersonalizationAgent:
         """
         try:
             context = self._build_context(
-                profile, faiss_results, collab_results, collab_source,
+                profile, faiss_results,
                 available_items, available_deals,
             )
 
@@ -183,6 +182,7 @@ RULES:
 - For each recommendation, write a short, friendly reason (1 sentence).
 - Score each recommendation 0-100 based on confidence.
 - Prioritize high-confidence matches.
+- Match deals to the user's preferred cuisines when possible. Always recommend at least 1 deal if any deals match the user's cuisine preference.
 
 Output MUST be valid JSON with this EXACT structure (no markdown, no extra text):
 {{
@@ -214,8 +214,6 @@ Output MUST be valid JSON with this EXACT structure (no markdown, no extra text)
         self,
         profile: Dict[str, Any],
         faiss_results: List[Dict[str, Any]],
-        collab_results: List[Dict[str, Any]],
-        collab_source: str,
         available_items: List[Dict[str, Any]],
         available_deals: List[Dict[str, Any]],
     ) -> str:
@@ -250,19 +248,9 @@ Output MUST be valid JSON with this EXACT structure (no markdown, no extra text)
                 )
             sections.append("")
 
-        # Collab filter results
-        if collab_results:
-            sections.append(f"=== COLLABORATIVE FILTER ({collab_source}) ===")
-            for r in collab_results[:8]:
-                sections.append(
-                    f"- {r.get('item_name', '?')} (item_id={r.get('item_id')}, "
-                    f"liked_by={r.get('liked_by_count', 0)} similar users)"
-                )
-            sections.append("")
-
         # Available items (limited to 30 to stay within context)
         sections.append("=== AVAILABLE MENU ITEMS (choose ONLY from these) ===")
-        for it in available_items[:30]:
+        for it in available_items:
             sections.append(
                 f"- item_id={it['item_id']}, name=\"{it['item_name']}\", "
                 f"price={it.get('price', '?')}, cuisine={it.get('cuisine', '?')}"
@@ -271,10 +259,10 @@ Output MUST be valid JSON with this EXACT structure (no markdown, no extra text)
 
         # Available deals
         sections.append("=== AVAILABLE DEALS (choose ONLY from these) ===")
-        for d in available_deals[:15]:
+        for d in available_deals:
             sections.append(
                 f"- deal_id={d['deal_id']}, name=\"{d['deal_name']}\", "
-                f"price={d.get('price', '?')}"
+                f"price={d.get('price', '?')}, cuisine={d.get('cuisine', '?')}"
             )
         sections.append("")
 
@@ -430,14 +418,18 @@ Output MUST be valid JSON with this EXACT structure (no markdown, no extra text)
             return []
 
     def _get_all_deals(self) -> List[Dict[str, Any]]:
-        """Fetch all active deals (id, name, price)."""
+        """Fetch all active deals (id, name, price, cuisine)."""
         try:
             with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT deal_id, deal_name, deal_price AS price
-                      FROM public.deal
-                     ORDER BY deal_id
+                    SELECT d.deal_id, d.deal_name, d.deal_price AS price,
+                           STRING_AGG(DISTINCT mi.item_cuisine, ', ') AS cuisine
+                      FROM public.deal d
+                      LEFT JOIN public.deal_item di ON di.deal_id = d.deal_id
+                      LEFT JOIN public.menu_item mi ON mi.item_id = di.item_id
+                     GROUP BY d.deal_id, d.deal_name, d.deal_price
+                     ORDER BY d.deal_id
                     """
                 )
                 return [dict(r) for r in cur.fetchall()]
