@@ -4,7 +4,7 @@ class ImageResolver {
 
     // ── FAST FOOD (items 1-10) ────────────────────────────────
     "Cheeseburger":           "assets/images/menu/fast_food/cheeseburger.png",
-    "Chicken Burger":         "assets/images/menu/fast_food/chicken_burger.jpeg",
+    "Chicken Burger":         "assets/images/menu/fast_food/chicken_burger.png",
     "Veggie Burger":          "assets/images/menu/fast_food/veggie burger.png",
     "Fries":                  "assets/images/menu/fast_food/fries.jpeg",
     "Chicken Nuggets":        "assets/images/menu/fast_food/chicken nuggets.png",

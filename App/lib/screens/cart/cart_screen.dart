@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/screens/checkout/checkout_screen.dart';
 import 'package:khaadim/services/cart_service.dart';
+import 'package:khaadim/utils/ImageResolver.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -134,7 +135,11 @@ class _CartScreenState extends State<CartScreen> {
                         child: ListTile(
                           leading: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: _buildItemImage(item.image),
+                            child: _buildItemImage(
+                              item.image,
+                              item.title ?? item.name ?? "Item",
+                              item.id.startsWith('deal:') ? 'deal' : 'item',
+                            ),
                           ),
                           title: Text(
                             item.title ?? item.name ?? "Item",
@@ -382,36 +387,29 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  Widget _buildItemImage(String? image) {
-    // If backend returns URL later, handle it too
-    if (image == null || image.isEmpty) {
-      return Container(
-        width: 60,
-        height: 60,
-        color: Colors.grey.shade200,
-        child: const Icon(Icons.fastfood),
-      );
-    }
+  Widget _buildItemImage(String? image, String name, String type) {
+    final url = (image ?? '').trim();
+    final isUrl = url.startsWith('http://') || url.startsWith('https://');
 
-    final isUrl = image.startsWith('http://') || image.startsWith('https://');
+    final assetPath = type == 'deal'
+        ? ImageResolver.getDealImage(name)
+        : ImageResolver.getMenuImage('', name);
 
     if (isUrl) {
       return Image.network(
-        image,
+        url,
         width: 60,
         height: 60,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: 60,
-          height: 60,
-          color: Colors.grey.shade200,
-          child: const Icon(Icons.image_not_supported),
-        ),
+        errorBuilder: (_, __, ___) => _buildAsset(assetPath, type),
       );
     }
+    return _buildAsset(assetPath, type);
+  }
 
+  Widget _buildAsset(String path, String type) {
     return Image.asset(
-      image,
+      path,
       width: 60,
       height: 60,
       fit: BoxFit.cover,
@@ -419,7 +417,8 @@ class _CartScreenState extends State<CartScreen> {
         width: 60,
         height: 60,
         color: Colors.grey.shade200,
-        child: const Icon(Icons.image_not_supported),
+        child: Icon(type == 'deal' ? Icons.local_offer : Icons.fastfood,
+            color: Colors.grey),
       ),
     );
   }

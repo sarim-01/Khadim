@@ -5,6 +5,7 @@ import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:provider/provider.dart';
 import 'package:khaadim/providers/cart_provider.dart';
+import 'package:khaadim/screens/cart/cart_screen.dart';
 
 
 class MenuScreen extends StatefulWidget {
@@ -95,7 +96,20 @@ class _MenuScreenState extends State<MenuScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Menu")),
+      appBar: AppBar(
+        title: const Text("Menu"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.shopping_cart_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CartScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(

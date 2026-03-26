@@ -8,6 +8,7 @@ import 'package:khaadim/services/deal_service.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
+import 'package:khaadim/screens/cart/cart_screen.dart';
 
 class OffersScreen extends StatefulWidget {
   const OffersScreen({super.key});
@@ -125,13 +126,18 @@ class _OffersScreenState extends State<OffersScreen> {
     return SafeArea(
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            "Economical Deals",
-            style: theme.textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w600,
+          title: const Text("Offers & Deals"),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.shopping_cart_outlined),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CartScreen()),
+                );
+              },
             ),
-          ),
-          centerTitle: true,
+          ],
         ),
         body: loading
             ? const Center(child: CircularProgressIndicator())

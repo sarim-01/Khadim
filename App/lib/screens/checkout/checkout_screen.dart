@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/services/cart_service.dart';
 import 'package:khaadim/services/payment_service.dart';
+import 'package:khaadim/services/auth_service.dart';
+import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/screens/orders/order_confirmation_screen.dart';
 
@@ -15,8 +17,7 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final TextEditingController _address =
-  TextEditingController(text: "123 Main St, City, State 12345");
+  final TextEditingController _address = TextEditingController();
 
   bool _placingOrder = false;
   String _statusText = 'Place Order';
@@ -36,7 +37,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (cart.cartId != null) {
         await cart.sync();
       }
+      _loadProfileAddress();
     });
+  }
+
+  Future<void> _loadProfileAddress() async {
+    try {
+      final res = await AuthService.me();
+      final user = res['user'] as Map<String, dynamic>? ?? {};
+      if (mounted) {
+        final savedAddress = user['delivery_address']?.toString() ?? '';
+        if (savedAddress.isNotEmpty) {
+          setState(() => _address.text = savedAddress);
+        }
+      }
+    } catch (_) {
+      // Ignore if it fails, let them type it manually
+    }
   }
 
   @override

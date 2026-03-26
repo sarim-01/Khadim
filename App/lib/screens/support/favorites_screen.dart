@@ -116,7 +116,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   }
 
   // ── Image helper ─────────────────────────────────────────────
-  Widget _itemImage(String? imageUrl, String name, {double size = 60}) {
+  Widget _itemImage(String? imageUrl, String name, String type, {double size = 60}) {
     final url = (imageUrl ?? '').trim();
     final hasUrl = url.startsWith('http://') || url.startsWith('https://');
     if (hasUrl) {
@@ -124,14 +124,18 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         borderRadius: BorderRadius.circular(8),
         child: Image.network(url,
             width: size, height: size, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _assetImage(name, size: size)),
+            errorBuilder: (_, __, ___) => _assetImage(name, type, size: size)),
       );
     }
-    return _assetImage(name, size: size);
+    return _assetImage(name, type, size: size);
   }
 
-  Widget _assetImage(String name, {double size = 60}) {
-    final fallback = ImageResolver.getMenuImage('', name);
+  Widget _assetImage(String name, String type, {double size = 60}) {
+    // Determine the correct local asset path based on type
+    final String fallback = type == 'deal'
+        ? ImageResolver.getDealImage(name)
+        : ImageResolver.getMenuImage('', name);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Image.asset(fallback,
@@ -141,7 +145,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                 decoration: BoxDecoration(
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.fastfood, color: Colors.grey),
+                child: Icon(type == 'deal' ? Icons.local_offer : Icons.fastfood,
+                    color: Colors.grey),
               )),
     );
   }
@@ -173,7 +178,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(children: [
-          _itemImage(f['image_url']?.toString(), name),
+          _itemImage(f['image_url']?.toString(), name, 'item'),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -220,7 +225,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(children: [
-          _itemImage(f['image_url']?.toString(), name),
+          _itemImage(f['image_url']?.toString(), name, 'deal'),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
