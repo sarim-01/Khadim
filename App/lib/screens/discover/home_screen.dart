@@ -155,6 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Custom Deal Card
   Widget _buildCustomDealCard(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: () {
@@ -165,88 +166,148 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF9800), Color(0xFFFF5722)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFF1A1A2E),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.orange.withOpacity(0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              color: Colors.black.withOpacity(0.25),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Row(
+        child: Stack(
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // Subtle accent circle decoration
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary.withOpacity(0.08),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: -12,
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.colorScheme.primary.withOpacity(0.05),
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.auto_awesome,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "Create Custom Deal",
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Tell AI what you want & get a personalized deal!",
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          "Try Now",
-                          style: TextStyle(
-                            color: Color(0xFFFF5722),
-                            fontWeight: FontWeight.bold,
+                        // AI chip label
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.auto_awesome,
+                                  color: theme.colorScheme.primary, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                'AI-Powered',
+                                style: TextStyle(
+                                  color: theme.colorScheme.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(width: 4),
-                        Icon(
-                          Icons.arrow_forward,
-                          color: Color(0xFFFF5722),
-                          size: 18,
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Create Your\nCustom Deal',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tell the AI what you\'re craving and get a deal built just for you.',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.55),
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        // CTA button
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Try Now',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              Icon(Icons.arrow_forward_rounded,
+                                  color: Colors.white, size: 15),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  // Right icon
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.restaurant_menu_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 28,
+                    ),
+                  ),
                 ],
               ),
-            ),
-            const Icon(
-              Icons.restaurant_menu,
-              color: Colors.white,
-              size: 50,
             ),
           ],
         ),
@@ -254,3 +315,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+

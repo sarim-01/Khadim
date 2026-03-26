@@ -7,6 +7,7 @@ import 'package:khaadim/services/offer_service.dart';
 import 'package:khaadim/services/deal_service.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/providers/cart_provider.dart';
+import 'package:khaadim/utils/ImageResolver.dart';
 
 class OffersScreen extends StatefulWidget {
   const OffersScreen({super.key});
@@ -64,36 +65,6 @@ class _OffersScreenState extends State<OffersScreen> {
     "Drinks": "assets/images/deals/deal_drinks.jpeg",
   };
 
-  /// Map deal name -> image (same as in HomeScreen)
-  final Map<String, String> dealImages = const {
-    // FAST FOOD DEALS
-    "Fast Solo A": "assets/images/deals/deal_fastfood.jpeg",
-    "Fast Solo B": "assets/images/deals/deal_fastfood.jpeg",
-    "Fast Duo": "assets/images/deals/deal_fastfood.jpeg",
-    "Fast Squad": "assets/images/deals/deal_fastfood.jpeg",
-    "Fast Food Big Party": "assets/images/deals/deal_fastfood.jpeg",
-
-    // CHINESE DEALS
-    "Chinese Solo": "assets/images/deals/deal_chinese.jpeg",
-    "Chinese Duo": "assets/images/deals/deal_chinese.jpeg",
-    "Chinese Squad A": "assets/images/deals/deal_chinese.jpeg",
-    "Chinese Squad B": "assets/images/deals/deal_chinese.jpeg",
-    "Chinese Party Variety": "assets/images/deals/deal_chinese.jpeg",
-
-    // BBQ DEALS
-    "BBQ Solo": "assets/images/deals/deal_bbq.jpeg",
-    "BBQ Duo": "assets/images/deals/deal_bbq.jpeg",
-    "BBQ Squad": "assets/images/deals/deal_bbq.jpeg",
-    "BBQ Party A": "assets/images/deals/deal_bbq.jpeg",
-    "BBQ Party B": "assets/images/deals/deal_bbq.jpeg",
-
-    // DESI DEALS
-    "Desi Solo": "assets/images/deals/deal_desi.jpeg",
-    "Desi Duo": "assets/images/deals/deal_desi.jpeg",
-    "Desi Squad A": "assets/images/deals/deal_desi.jpeg",
-    "Desi Squad B": "assets/images/deals/deal_desi.jpeg",
-    "Desi Party": "assets/images/deals/deal_desi.jpeg",
-  };
 
   @override
   void initState() {
@@ -383,8 +354,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 )
               else
                 ..._filteredDeals.map((deal) {
-                  final img = dealImages[deal.dealName] ??
-                      offerBannerImages["Fast Food"]!;
+                  final img = ImageResolver.getDealImage(deal.dealName);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16),
                     child: _DealCard(deal: deal, image: img),

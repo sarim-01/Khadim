@@ -74,7 +74,35 @@ class ImageResolver {
     "fast_food": "assets/images/menu/fast_food/",
   };
 
-  // Deal banner images
+  // Deal images — keys match exact deal_name values from the database.
+  static const Map<String, String> exactDealImages = {
+    // BBQ
+    "BBQ Solo":    "assets/images/deals/BBQ deals/bbq_solo.png",
+    "BBQ Duo":     "assets/images/deals/BBQ deals/bbq duo.png",
+    "BBQ Squad":   "assets/images/deals/BBQ deals/bbq_squad.png",
+    "BBQ Party A": "assets/images/deals/BBQ deals/bbq_party_A.png",
+    "BBQ Party B": "assets/images/deals/BBQ deals/bbq_party_B.png",
+    // Chinese
+    "Chinese Solo":          "assets/images/deals/Chinese Deals/chinese_solo.png",
+    "Chinese Duo":           "assets/images/deals/Chinese Deals/chinese_duo.png",
+    "Chinese Squad A":       "assets/images/deals/Chinese Deals/chinese_squad_A.png",
+    "Chinese Squad B":       "assets/images/deals/Chinese Deals/Chinese_Squad_B.png",
+    "Chinese Party Variety": "assets/images/deals/Chinese Deals/chinese_party.png",
+    // Desi
+    "Desi Solo":    "assets/images/deals/Desi deals/desi_solo.png",
+    "Desi Duo":     "assets/images/deals/Desi deals/desi_duo.png",
+    "Desi Squad A": "assets/images/deals/Desi deals/desi_squad_A.png",
+    "Desi Squad B": "assets/images/deals/Desi deals/desi_squad_B.png",
+    "Desi Party":   "assets/images/deals/Desi deals/desi_party.png",  
+    // Fast Food
+    "Fast Solo A":        "assets/images/deals/FastFood deals/Fast_solo_A.png",
+    "Fast Solo B":        "assets/images/deals/FastFood deals/Fast_solo_B.png",
+    "Fast Duo":           "assets/images/deals/FastFood deals/Fast_Duo.png",
+    "Fast Squad":         "assets/images/deals/FastFood deals/Fast_squad.png",
+    "Fast Food Big Party":"assets/images/deals/FastFood deals/Fast_food_big_party.png",
+  };
+
+  // Legacy category-based deal banners (kept for any other callers)
   static const Map<String, String> dealImages = {
     "bbq":       "assets/images/deals/deal_bbq.jpeg",
     "chinese":   "assets/images/deals/deal_chinese.jpeg",
@@ -104,6 +132,10 @@ class ImageResolver {
   }
 
   static String getDealImage(String dealName) {
+    // 1. Exact match by deal name
+    final exact = exactDealImages[dealName.trim()];
+    if (exact != null) return exact;
+    // 2. Legacy category fallback
     return dealImages[getDealCategory(dealName)] ?? fallbackImage;
   }
 

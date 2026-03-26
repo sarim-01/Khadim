@@ -20,19 +20,16 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
     with SingleTickerProviderStateMixin {
   final Set<int> _adding = {};
 
-  // Shimmer animation controller
   late AnimationController _shimmerController;
   late Animation<double> _shimmerAnim;
 
   @override
   void initState() {
     super.initState();
-
     _shimmerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
-
     _shimmerAnim = Tween<double>(begin: 0.3, end: 0.7).animate(
       CurvedAnimation(parent: _shimmerController, curve: Curves.easeInOut),
     );
@@ -48,13 +45,14 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
     final cartId = context.read<CartProvider>().cartId;
     if (cartId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cart not ready, please try again.'), behavior: SnackBarBehavior.floating),
+        const SnackBar(
+          content: Text('Cart not ready, please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       return;
     }
-
-    setState(() { _adding.add(deal.dealId); });
-
+    setState(() => _adding.add(deal.dealId));
     try {
       await CartService.addItem(
         cartId: cartId,
@@ -63,7 +61,6 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
         quantity: 1,
       );
       await context.read<CartProvider>().sync();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -77,32 +74,29 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not add ${deal.dealName}: $e'),
+            content: Text('Could not add ${deal.dealName}'),
             behavior: SnackBarBehavior.floating,
             backgroundColor: Colors.redAccent,
           ),
         );
       }
     } finally {
-      if (mounted) setState(() { _adding.remove(deal.dealId); });
+      if (mounted) setState(() => _adding.remove(deal.dealId));
     }
   }
 
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<RecommendationResult>(
       future: widget.future,
       builder: (ctx, snapshot) {
-        // Loading — shimmer cards
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildShimmerSection(context);
         }
-
-        // Error or empty — silent fail
         final result = snapshot.data;
         if (result == null || result.recommendedDeals.isEmpty) {
           return const SizedBox.shrink();
         }
-
         return _buildSection(context, result.recommendedDeals);
       },
     );
@@ -117,13 +111,20 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             children: [
-              const Text('🎁', style: TextStyle(fontSize: 18)),
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               const SizedBox(width: 8),
               Text(
                 "Deals You'll Love",
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
@@ -134,7 +135,7 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
           physics: const NeverScrollableScrollPhysics(),
           clipBehavior: Clip.none,
           itemCount: deals.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (ctx, i) => _buildDealCard(ctx, deals[i]),
         ),
       ],
@@ -146,140 +147,148 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
     final isAdding = _adding.contains(deal.dealId);
 
     return Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              theme.colorScheme.primary.withOpacity(0.85),
-              theme.colorScheme.primary,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: theme.colorScheme.primary.withOpacity(0.25),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
+        ],
+        border: Border.all(
+          color: theme.colorScheme.outline.withOpacity(0.10),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Deal Image
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.asset(
-                  ImageResolver.getDealImage(deal.dealName),
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 48,
-                    height: 48,
-                    color: Colors.white.withOpacity(0.2),
-                    child: const Icon(Icons.local_offer, color: Colors.white),
-                  ),
-                ),
+      ),
+      child: Row(
+        children: [
+          // Deal image — left side
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(14),
+              bottomLeft: Radius.circular(14),
+            ),
+            child: Image.asset(
+              ImageResolver.getDealImage(deal.dealName),
+              width: 90,
+              height: 90,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 90,
+                height: 90,
+                color: Colors.grey.shade100,
+                child: const Icon(Icons.local_offer_outlined,
+                    color: Colors.grey, size: 32),
               ),
-              const SizedBox(height: 8),
-
-              // Deal name
-              Text(
-                deal.dealName,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-
-              // Reason tag
-              if (deal.reason.isNotEmpty)
-                Text(
-                  deal.reason,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: Colors.white.withOpacity(0.75),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-
-              const SizedBox(height: 8),
-
-              // Deal actions
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            ),
+          ),
+          // Content — right side
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: Text(deal.dealName),
-                          content: Text(deal.items.isNotEmpty ? deal.items : "Includes multiple items from our menu."),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text("Close"),
-                            )
+                  Text(
+                    deal.dealName,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (deal.reason.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      deal.reason,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      // View items link
+                      GestureDetector(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: Text(deal.dealName),
+                              content: Text(deal.items.isNotEmpty
+                                  ? deal.items
+                                  : 'Includes multiple items from our menu.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Close'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'View items',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(Icons.arrow_forward_ios_rounded,
+                                color: theme.colorScheme.primary, size: 10),
                           ],
                         ),
-                      );
-                    },
-                    child: Row(
-                      children: [
-                        Text(
-                          'View items',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                      ),
+                      const Spacer(),
+                      // Add button
+                      SizedBox(
+                        height: 28,
+                        child: ElevatedButton(
+                          onPressed: isAdding ? null : () => _addDeal(deal),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: theme.colorScheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward_ios_rounded,
-                            color: Colors.white, size: 10),
-                      ],
-                    ),
-                  ),
-
-                  // Add button
-                  SizedBox(
-                    height: 32,
-                    child: ElevatedButton(
-                      onPressed: isAdding ? null : () => _addDeal(deal),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: theme.colorScheme.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          child: isAdding
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  '+ Add',
+                                  style: TextStyle(
+                                      fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
                         ),
                       ),
-                      child: isAdding
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text(
-                              "Add",
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                    ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
+      ),
     );
   }
 
@@ -293,11 +302,11 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
           child: AnimatedBuilder(
             animation: _shimmerAnim,
             builder: (_, __) => Container(
-              height: 20,
-              width: 180,
+              height: 18,
+              width: 160,
               decoration: BoxDecoration(
                 color: theme.colorScheme.onSurface
-                    .withOpacity(_shimmerAnim.value * 0.15),
+                    .withOpacity(_shimmerAnim.value * 0.12),
                 borderRadius: BorderRadius.circular(6),
               ),
             ),
@@ -307,19 +316,18 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: 3,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, __) => AnimatedBuilder(
             animation: _shimmerAnim,
             builder: (_, __) => Container(
-              height: 140,
-              width: double.infinity,
+              height: 90,
               decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurface
-                      .withOpacity(_shimmerAnim.value * 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                color: theme.colorScheme.onSurface
+                    .withOpacity(_shimmerAnim.value * 0.08),
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
+          ),
         ),
       ],
     );

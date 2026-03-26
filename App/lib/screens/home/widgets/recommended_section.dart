@@ -21,19 +21,16 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
     with SingleTickerProviderStateMixin {
   final Set<int> _adding = {};
 
-  // Shimmer animation controller
   late AnimationController _shimmerController;
   late Animation<double> _shimmerAnim;
 
   @override
   void initState() {
     super.initState();
-
     _shimmerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
-
     _shimmerAnim = Tween<double>(begin: 0.3, end: 0.7).animate(
       CurvedAnimation(parent: _shimmerController, curve: Curves.easeInOut),
     );
@@ -48,7 +45,6 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
   Future<void> _addToCart(BuildContext ctx, RecommendedItem item) async {
     final cart = Provider.of<CartProvider>(ctx, listen: false);
     if (cart.cartId == null) return;
-
     setState(() => _adding.add(item.itemId));
     try {
       await CartService.addItem(
@@ -78,21 +74,18 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
     }
   }
 
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<RecommendationResult>(
       future: widget.future,
       builder: (ctx, snapshot) {
-        // Loading — shimmer cards
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildShimmerSection(context);
         }
-
-        // Error or empty — silent fail
         final result = snapshot.data;
         if (result == null || result.recommendedItems.isEmpty) {
           return const SizedBox.shrink();
         }
-
         return _buildSection(context, result.recommendedItems);
       },
     );
@@ -107,13 +100,20 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             children: [
-              const Text('🍽️', style: TextStyle(fontSize: 18)),
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               const SizedBox(width: 8),
               Text(
                 'Personalized For You',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
@@ -124,7 +124,7 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
           physics: const NeverScrollableScrollPhysics(),
           clipBehavior: Clip.none,
           itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (ctx, i) => _buildItemCard(ctx, items[i]),
         ),
       ],
@@ -136,96 +136,107 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
     final isAdding = _adding.contains(item.itemId);
 
     return Container(
-      width: double.infinity,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
-            offset: const Offset(0, 3),
+            offset: const Offset(0, 2),
           ),
         ],
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.12),
+          color: theme.colorScheme.outline.withOpacity(0.10),
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Item Image
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.asset(
-                ImageResolver.getMenuImage(item.category, item.itemName),
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 48,
-                  height: 48,
-                  color: Colors.grey.shade200,
-                  child: const Icon(Icons.fastfood, color: Colors.grey),
-                ),
+      child: Row(
+        children: [
+          // Large image on the left
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(14),
+              bottomLeft: Radius.circular(14),
+            ),
+            child: Image.asset(
+              ImageResolver.getMenuImage(item.category, item.itemName),
+              width: 90,
+              height: 90,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 90,
+                height: 90,
+                color: Colors.grey.shade100,
+                child: const Icon(Icons.fastfood, color: Colors.grey, size: 32),
               ),
             ),
-            const SizedBox(height: 8),
-
-            // Item name
-            Text(
-              item.itemName,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-
-            // Reason tag
-            if (item.reason.isNotEmpty)
-              Text(
-                item.reason,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-
-            const SizedBox(height: 8),
-
-            // Add button
-            SizedBox(
-              width: double.infinity,
-              height: 30,
-              child: ElevatedButton(
-                onPressed: isAdding ? null : () => _addToCart(context, item),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orangeAccent,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+          ),
+          // Content on the right
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.itemName,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                child: isAdding
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+                  if (item.reason.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      item.reason,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      height: 28,
+                      child: ElevatedButton(
+                        onPressed: isAdding ? null : () => _addToCart(context, item),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                      )
-                    : const Text('Add', style: TextStyle(fontSize: 12)),
+                        child: isAdding
+                            ? const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                '+ Add',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -240,10 +251,10 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
           child: AnimatedBuilder(
             animation: _shimmerAnim,
             builder: (_, __) => Container(
-              height: 20,
-              width: 200,
+              height: 18,
+              width: 180,
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withOpacity(_shimmerAnim.value * 0.15),
+                color: theme.colorScheme.onSurface.withOpacity(_shimmerAnim.value * 0.12),
                 borderRadius: BorderRadius.circular(6),
               ),
             ),
@@ -252,20 +263,18 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: 4,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemCount: 3,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, __) => AnimatedBuilder(
             animation: _shimmerAnim,
             builder: (_, __) => Container(
-              height: 150,
-              width: double.infinity,
+              height: 90,
               decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurface
-                      .withOpacity(_shimmerAnim.value * 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                color: theme.colorScheme.onSurface.withOpacity(_shimmerAnim.value * 0.08),
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
+          ),
         ),
       ],
     );
