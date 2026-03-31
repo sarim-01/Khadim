@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:khaadim/app_config.dart';
 import 'package:khaadim/models/order.dart';
+import 'package:khaadim/screens/dine_in/kiosk_bottom_nav.dart';
 import 'package:khaadim/screens/orders/order_tracking_screen.dart';
 import 'package:khaadim/services/order_service.dart';
 import 'package:khaadim/screens/support/feedback_screen.dart';
@@ -166,6 +168,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         );
                       },
                     ),
+      bottomNavigationBar: AppConfig.isKiosk
+          ? const KioskBottomNav(currentIndex: 3)
+          : null,
     );
   }
 }

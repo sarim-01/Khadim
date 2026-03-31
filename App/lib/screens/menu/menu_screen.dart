@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:khaadim/app_config.dart';
 import 'package:khaadim/models/menu_item.dart';
+import 'package:khaadim/providers/dine_in_provider.dart';
+import 'package:khaadim/screens/dine_in/kiosk_bottom_nav.dart';
 import 'package:khaadim/services/menu_service.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/services/favorites_service.dart';
@@ -102,10 +105,14 @@ class _MenuScreenState extends State<MenuScreen> {
           IconButton(
             icon: const Icon(Icons.shopping_cart_outlined),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CartScreen()),
-              );
+              if (AppConfig.isKiosk) {
+                Navigator.pushNamed(context, '/kiosk-cart');
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CartScreen()),
+                );
+              }
             },
           ),
         ],
@@ -193,6 +200,9 @@ class _MenuScreenState extends State<MenuScreen> {
                 ],
               ),
             ),
+      bottomNavigationBar: AppConfig.isKiosk
+          ? const KioskBottomNav(currentIndex: 1)
+          : null,
     );
   }
 }
@@ -216,7 +226,11 @@ class _MenuItemCardState extends State<_MenuItemCard> {
   @override
   void initState() {
     super.initState();
-    _loadFavStatus();
+    if (AppConfig.isKiosk) {
+      _favLoading = false;
+    } else {
+      _loadFavStatus();
+    }
   }
 
   Future<void> _loadFavStatus() async {
@@ -330,19 +344,23 @@ class _MenuItemCardState extends State<_MenuItemCard> {
                               .copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
-                      // Heart button
-                      _favLoading
-                          ? const SizedBox(
-                              width: 24, height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2))
-                          : GestureDetector(
-                              onTap: _toggle,
-                              child: Icon(
-                                _isFav ? Icons.favorite : Icons.favorite_border,
-                                color: _isFav ? Colors.redAccent : Colors.grey,
-                                size: 22,
+                      if (!AppConfig.isKiosk)
+                        _favLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : GestureDetector(
+                                onTap: _toggle,
+                                child: Icon(
+                                  _isFav
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color: _isFav ? Colors.redAccent : Colors.grey,
+                                  size: 22,
+                                ),
                               ),
-                            ),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -363,38 +381,66 @@ class _MenuItemCardState extends State<_MenuItemCard> {
                           ),
                         ),
                       ),
-                      Consumer<CartProvider>(
-                        builder: (context, cart, child) {
-                          return ElevatedButton(
-                            onPressed: cart.isSyncing
-                                ? null
-                                : () async {
-                                    try {
-                                      await cart.addMenuItem(widget.item);
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(SnackBar(
-                                        content: Text(
-                                            "${widget.item.itemName} added to cart"),
-                                        behavior: SnackBarBehavior.floating,
-                                        duration: const Duration(seconds: 1),
-                                      ));
-                                    } catch (e) {
-                                      if (!context.mounted) return;
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(SnackBar(
-                                        content: Text(e.toString()),
-                                        behavior: SnackBarBehavior.floating,
-                                      ));
-                                    }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
+                      AppConfig.isKiosk
+                          ? ElevatedButton(
+                              onPressed: () {
+                                Provider.of<DineInProvider>(context,
+                                        listen: false)
+                                    .addItem(
+                                  widget.item.itemId,
+                                  'menu_item',
+                                  widget.item.itemName,
+                                  widget.item.itemPrice.toDouble(),
+                                  1,
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("${widget.item.itemName} added"),
+                                    behavior: SnackBarBehavior.floating,
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                              ),
+                              child: const Text("Add"),
+                            )
+                          : Consumer<CartProvider>(
+                              builder: (context, cart, child) {
+                                return ElevatedButton(
+                                  onPressed: cart.isSyncing
+                                      ? null
+                                      : () async {
+                                          try {
+                                            await cart.addMenuItem(widget.item);
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  "${widget.item.itemName} added to cart"),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                              duration:
+                                                  const Duration(seconds: 1),
+                                            ));
+                                          } catch (e) {
+                                            if (!context.mounted) return;
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(e.toString()),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                            ));
+                                          }
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                  child: const Text("Add"),
+                                );
+                              },
                             ),
-                            child: const Text("Add"),
-                          );
-                        },
-                      ),
                     ],
                   ),
                 ],

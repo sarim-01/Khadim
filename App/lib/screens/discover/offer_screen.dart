@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:khaadim/app_config.dart';
 
 import 'package:khaadim/models/offer_model.dart';
 import 'package:khaadim/models/deal_model.dart';
@@ -7,6 +8,7 @@ import 'package:khaadim/services/offer_service.dart';
 import 'package:khaadim/services/deal_service.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/providers/cart_provider.dart';
+import 'package:khaadim/screens/dine_in/kiosk_bottom_nav.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/screens/cart/cart_screen.dart';
 
@@ -59,11 +61,11 @@ class _OffersScreenState extends State<OffersScreen> {
 
   /// Map offer category -> banner image
   final Map<String, String> offerBannerImages = const {
-    "Fast Food": "assets/images/deals/deal_fastfood.jpeg",
-    "Chinese": "assets/images/deals/deal_chinese.jpeg",
-    "Desi": "assets/images/deals/deal_desi.jpeg",
-    "BBQ": "assets/images/deals/deal_bbq.jpeg",
-    "Drinks": "assets/images/deals/deal_drinks.jpeg",
+    "Fast Food": "assets/images/deals/FastFood deals/Fast_solo_A.png",
+    "Chinese": "assets/images/deals/Chinese Deals/chinese_solo.png",
+    "Desi": "assets/images/deals/Desi deals/desi_solo.png",
+    "BBQ": "assets/images/deals/BBQ deals/bbq_solo.png",
+    "Drinks": "assets/images/confirm.png",
   };
 
 
@@ -131,10 +133,14 @@ class _OffersScreenState extends State<OffersScreen> {
             IconButton(
               icon: const Icon(Icons.shopping_cart_outlined),
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CartScreen()),
-                );
+                if (AppConfig.isKiosk) {
+                  Navigator.pushNamed(context, '/kiosk-cart');
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CartScreen()),
+                  );
+                }
               },
             ),
           ],
@@ -173,6 +179,7 @@ class _OffersScreenState extends State<OffersScreen> {
                           image: DecorationImage(
                             image: AssetImage(bannerImage),
                             fit: BoxFit.cover,
+                            onError: (_, __) {},
                           ),
                         ),
                         child: Container(
@@ -369,6 +376,9 @@ class _OffersScreenState extends State<OffersScreen> {
             ],
           ),
         ),
+        bottomNavigationBar: AppConfig.isKiosk
+            ? const KioskBottomNav(currentIndex: 2)
+            : null,
       ),
     );
   }
@@ -408,6 +418,12 @@ class _OffersScreenState extends State<OffersScreen> {
               width: 110,
               height: 100,
               fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Image.asset(
+                ImageResolver.fallbackImage,
+                width: 110,
+                height: 100,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
           Expanded(
@@ -492,6 +508,12 @@ class _OffersScreenState extends State<OffersScreen> {
               height: 160,
               width: double.infinity,
               fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Image.asset(
+                ImageResolver.fallbackImage,
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
 
@@ -605,6 +627,10 @@ class _DealCardState extends State<_DealCard> {
   @override
   void initState() {
     super.initState();
+    if (AppConfig.isKiosk) {
+      _favLoading = false;
+      return;
+    }
     _loadFavStatus();
   }
 
@@ -682,6 +708,12 @@ class _DealCardState extends State<_DealCard> {
               height: 160,
               width: double.infinity,
               fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Image.asset(
+                ImageResolver.fallbackImage,
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
           Padding(
@@ -718,22 +750,23 @@ class _DealCardState extends State<_DealCard> {
                             fontWeight: FontWeight.bold),
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    // Heart button
-                    _favLoading
-                        ? const SizedBox(
-                            width: 24, height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : GestureDetector(
-                            onTap: _toggle,
-                            child: Icon(
-                              _isFav
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              color: _isFav ? Colors.redAccent : Colors.grey,
-                              size: 22,
+                    if (!AppConfig.isKiosk) ...[
+                      const SizedBox(width: 4),
+                      _favLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : GestureDetector(
+                              onTap: _toggle,
+                              child: Icon(
+                                _isFav ? Icons.favorite : Icons.favorite_border,
+                                color: _isFav ? Colors.redAccent : Colors.grey,
+                                size: 22,
+                              ),
                             ),
-                          ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 6),

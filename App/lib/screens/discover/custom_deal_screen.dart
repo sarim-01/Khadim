@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../app_config.dart';
 import '../../models/custom_deal_model.dart';
 import '../../providers/cart_provider.dart';
+import '../../providers/dine_in_provider.dart';
 import '../../services/cart_service.dart';
 import '../../services/deal_service.dart';
 
@@ -143,6 +145,48 @@ class _CustomDealScreenState extends State<CustomDealScreen> {
 
   Future<void> _addToCart() async {
     if (_dealResponse == null || !_dealResponse!.hasItems) return;
+
+    if (AppConfig.isKiosk) {
+      final DineInProvider dineInProvider =
+          Provider.of<DineInProvider>(context, listen: false);
+
+      if (dineInProvider.sessionId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Session not available. Please login again.')),
+        );
+        return;
+      }
+
+      final int localCustomDealId = DateTime.now().microsecondsSinceEpoch;
+      final String title =
+          'Custom Deal (for $_personCount ${_personCount == 1 ? 'person' : 'people'})';
+
+      dineInProvider.addCustomDeal(
+        customDealId: localCustomDealId,
+        title: title,
+        totalPrice: _dealResponse!.totalPrice,
+        groupSize: _personCount,
+        bundleItems: _dealResponse!.items
+            .map((CustomDealItem item) => {
+                  'item_id': item.itemId,
+                  'item_type': item.itemType == 'deal' ? 'deal' : 'menu_item',
+                  'item_name': item.itemName,
+                  'price': item.price,
+                  'quantity': item.quantity,
+                })
+            .toList(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Custom deal added to cart'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context);
+      return;
+    }
 
     final CartProvider cartProvider =
         Provider.of<CartProvider>(context, listen: false);
