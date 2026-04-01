@@ -161,7 +161,7 @@ class _TablePinScreenState extends State<TablePinScreen> {
                             textCapitalization: TextCapitalization.characters,
                             decoration: const InputDecoration(
                               labelText: 'Table Number',
-                              hintText: 'T01',
+                              hintText: '1',
                               prefixIcon: Icon(Icons.table_restaurant_outlined),
                             ),
                             validator: (value) {

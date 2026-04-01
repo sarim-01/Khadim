@@ -6,6 +6,7 @@ import 'revenue_screen.dart';
 import 'trends_screen.dart';
 import 'reviews_screen.dart';
 import 'ai_screen.dart';
+import 'restaurant_management_screen.dart';
 
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
@@ -35,6 +36,7 @@ class _AdminShellState extends State<AdminShell> {
       ),
     ),
     AIScreen(),
+    RestaurantManagementScreen(),
   ];
 
   final List<Map<String, dynamic>> _navItems = [
@@ -44,6 +46,7 @@ class _AdminShellState extends State<AdminShell> {
     {'label': 'Reviews', 'icon': Icons.comment_outlined},
     {'label': 'Agent Performance', 'icon': Icons.smart_toy_outlined},
     {'label': 'AI Suggestions', 'icon': Icons.lightbulb_outline},
+    {'label': 'Restaurant', 'icon': Icons.table_restaurant},
   ];
 
   @override
@@ -129,6 +132,7 @@ class _AdminShellState extends State<AdminShell> {
                     _buildNavItem(3),
                     _buildNavItem(4),
                     _buildNavItem(5),
+                    _buildNavItem(6),
                   ],
                 ),
               ),
