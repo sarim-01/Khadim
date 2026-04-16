@@ -520,8 +520,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       reservedSize: 24,
                       getTitlesWidget: (value, meta) {
                         final int hour = value.toInt();
-                        if (hour < 0 || hour > 23)
+                        if (hour < 0 || hour > 23) {
                           return const SizedBox.shrink();
+                        }
                         // Keep x-axis readable on smaller widths.
                         if (MediaQuery.of(context).size.width <= 500 &&
                             hour % 3 != 0) {

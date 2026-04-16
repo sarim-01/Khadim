@@ -12,7 +12,7 @@ import 'package:khaadim/screens/cart/cart_screen.dart';
 
 
 class MenuScreen extends StatefulWidget {
-  const MenuScreen({Key? key}) : super(key: key);
+  const MenuScreen({super.key});
 
   @override
   State<MenuScreen> createState() => _MenuScreenState();
@@ -44,6 +44,7 @@ class _MenuScreenState extends State<MenuScreen> {
     } catch (e) {
       print("Error: $e");
     }
+    if (!mounted) return;
     setState(() => loading = false);
   }
 

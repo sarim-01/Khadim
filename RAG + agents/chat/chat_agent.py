@@ -7,6 +7,11 @@ from langchain_core.messages import HumanMessage, AIMessage
 from retrieval.search_agent import SearchAgent
 from retrieval.rag_retriever import RAGRetriever
 
+# AFTER the existing imports, add:
+try:
+    import requests
+except ImportError:
+    requests = None
 load_dotenv()
 
 # Initialize the LLM

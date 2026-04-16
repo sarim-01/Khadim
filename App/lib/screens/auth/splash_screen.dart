@@ -4,7 +4,7 @@ import 'package:khaadim/utils/session_bootstrap.dart';
 
 class SplashScreen extends StatefulWidget {
   final VoidCallback? onThemeToggle; // optional future toggle
-  const SplashScreen({Key? key, this.onThemeToggle}) : super(key: key);
+  const SplashScreen({super.key, this.onThemeToggle});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();

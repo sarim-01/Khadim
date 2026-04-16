@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 class TestUrduTTSPage extends StatefulWidget {
-  const TestUrduTTSPage({Key? key}) : super(key: key);
+  const TestUrduTTSPage({super.key});
 
   @override
   State<TestUrduTTSPage> createState() => _TestUrduTTSPageState();

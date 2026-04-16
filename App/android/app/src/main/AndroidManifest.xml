@@ -1,13 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 📌 REQUIRED FOR VOICE RECORDING -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-
-    <!-- 📌 REQUIRED FOR API CALLS & TTS AUDIO PLAYBACK -->
     <uses-permission android:name="android.permission.INTERNET"/>
-
-    <!-- Optional: required for temporary audio file reading/writing -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28"/>
@@ -16,7 +11,8 @@
         android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">   <!-- 🔥 REQUIRED FOR MIUI / Xiaomi -->
+        android:usesCleartextTraffic="true"
+        tools:replace="android:label">
 
         <activity
             android:name=".MainActivity"

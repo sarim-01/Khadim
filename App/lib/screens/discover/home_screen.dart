@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/screens/cart/cart_screen.dart';
 import 'package:khaadim/screens/discover/upsell_popup.dart';
 import 'package:khaadim/screens/discover/custom_deal_screen.dart';
@@ -11,7 +9,7 @@ import 'package:khaadim/services/personalization_service.dart';
 import 'package:khaadim/models/recommendation_result.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -52,7 +50,9 @@ class _HomeScreenState extends State<HomeScreen> {
       // Ignore fetch errors; indicator will still dismiss
     }
     if (mounted) {
-      setState(() { _recommendationFuture = next; });
+      setState(() {
+        _recommendationFuture = next;
+      });
     }
   }
 
@@ -81,7 +81,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-
         body: RefreshIndicator(
           onRefresh: _handleRefresh,
           color: theme.colorScheme.primary,
@@ -99,12 +98,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   final result = snapshot.data;
                   final isNewUser =
                       snapshot.connectionState == ConnectionState.done &&
-                      result != null &&
-                      result.source == 'new_user';
+                          result != null &&
+                          result.source == 'new_user';
 
                   if (isNewUser) {
                     return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 24),
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 0, vertical: 24),
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
@@ -315,4 +315,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-

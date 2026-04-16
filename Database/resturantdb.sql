@@ -2,10 +2,12 @@
 -- PostgreSQL database dump
 --
 
+\restrict J35mgRtI3lNPn9fWzX6pS0PNcNzaN1fbE30tNepQdAa54sb0fgRSmx97kMPxalo
+
 -- Dumped from database version 18.1
 -- Dumped by pg_dump version 18.1
 
--- Started on 2026-03-17 10:33:47
+-- Started on 2026-04-02 14:54:56
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -20,7 +22,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 7 (class 2615 OID 16689)
+-- TOC entry 7 (class 2615 OID 17249)
 -- Name: auth; Type: SCHEMA; Schema: -; Owner: postgres
 --
 
@@ -30,7 +32,7 @@ CREATE SCHEMA auth;
 ALTER SCHEMA auth OWNER TO postgres;
 
 --
--- TOC entry 9 (class 2615 OID 16691)
+-- TOC entry 8 (class 2615 OID 17250)
 -- Name: chat; Type: SCHEMA; Schema: -; Owner: postgres
 --
 
@@ -40,7 +42,7 @@ CREATE SCHEMA chat;
 ALTER SCHEMA chat OWNER TO postgres;
 
 --
--- TOC entry 8 (class 2615 OID 16690)
+-- TOC entry 9 (class 2615 OID 17251)
 -- Name: orders; Type: SCHEMA; Schema: -; Owner: postgres
 --
 
@@ -50,7 +52,26 @@ CREATE SCHEMA orders;
 ALTER SCHEMA orders OWNER TO postgres;
 
 --
--- TOC entry 2 (class 3079 OID 16614)
+-- TOC entry 6 (class 2615 OID 17248)
+-- Name: public; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+-- *not* creating schema, since initdb creates it
+
+
+ALTER SCHEMA public OWNER TO postgres;
+
+--
+-- TOC entry 5416 (class 0 OID 0)
+-- Dependencies: 6
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON SCHEMA public IS '';
+
+
+--
+-- TOC entry 2 (class 3079 OID 17253)
 -- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -58,7 +79,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
 
 --
--- TOC entry 5340 (class 0 OID 0)
+-- TOC entry 5418 (class 0 OID 0)
 -- Dependencies: 2
 -- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
 --
@@ -67,7 +88,7 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
--- TOC entry 299 (class 1255 OID 16729)
+-- TOC entry 307 (class 1255 OID 17291)
 -- Name: set_updated_at(); Type: FUNCTION; Schema: auth; Owner: postgres
 --
 
@@ -84,7 +105,7 @@ $$;
 ALTER FUNCTION auth.set_updated_at() OWNER TO postgres;
 
 --
--- TOC entry 300 (class 1255 OID 16801)
+-- TOC entry 308 (class 1255 OID 17292)
 -- Name: set_updated_at(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -105,7 +126,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- TOC entry 238 (class 1259 OID 16692)
+-- TOC entry 223 (class 1259 OID 17293)
 -- Name: app_users; Type: TABLE; Schema: auth; Owner: postgres
 --
 
@@ -124,7 +145,7 @@ CREATE TABLE auth.app_users (
 ALTER TABLE auth.app_users OWNER TO postgres;
 
 --
--- TOC entry 239 (class 1259 OID 16712)
+-- TOC entry 224 (class 1259 OID 17307)
 -- Name: user_preferences; Type: TABLE; Schema: auth; Owner: postgres
 --
 
@@ -138,7 +159,7 @@ CREATE TABLE auth.user_preferences (
 ALTER TABLE auth.user_preferences OWNER TO postgres;
 
 --
--- TOC entry 249 (class 1259 OID 16939)
+-- TOC entry 225 (class 1259 OID 17317)
 -- Name: messages; Type: TABLE; Schema: chat; Owner: postgres
 --
 
@@ -154,14 +175,14 @@ CREATE TABLE chat.messages (
     tokens_used integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     metadata jsonb DEFAULT '{}'::jsonb,
-    CONSTRAINT messages_role_chk CHECK (((role)::text = ANY ((ARRAY['user'::character varying, 'assistant'::character varying, 'system'::character varying, 'tool'::character varying])::text[])))
+    CONSTRAINT messages_role_chk CHECK (((role)::text = ANY (ARRAY[('user'::character varying)::text, ('assistant'::character varying)::text, ('system'::character varying)::text, ('tool'::character varying)::text])))
 );
 
 
 ALTER TABLE chat.messages OWNER TO postgres;
 
 --
--- TOC entry 248 (class 1259 OID 16938)
+-- TOC entry 226 (class 1259 OID 17330)
 -- Name: messages_message_id_seq; Type: SEQUENCE; Schema: chat; Owner: postgres
 --
 
@@ -177,8 +198,8 @@ CREATE SEQUENCE chat.messages_message_id_seq
 ALTER SEQUENCE chat.messages_message_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5341 (class 0 OID 0)
--- Dependencies: 248
+-- TOC entry 5419 (class 0 OID 0)
+-- Dependencies: 226
 -- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: chat; Owner: postgres
 --
 
@@ -186,7 +207,7 @@ ALTER SEQUENCE chat.messages_message_id_seq OWNED BY chat.messages.message_id;
 
 
 --
--- TOC entry 247 (class 1259 OID 16915)
+-- TOC entry 227 (class 1259 OID 17331)
 -- Name: sessions; Type: TABLE; Schema: chat; Owner: postgres
 --
 
@@ -206,7 +227,7 @@ CREATE TABLE chat.sessions (
 ALTER TABLE chat.sessions OWNER TO postgres;
 
 --
--- TOC entry 246 (class 1259 OID 16914)
+-- TOC entry 228 (class 1259 OID 17344)
 -- Name: sessions_session_id_seq; Type: SEQUENCE; Schema: chat; Owner: postgres
 --
 
@@ -222,8 +243,8 @@ CREATE SEQUENCE chat.sessions_session_id_seq
 ALTER SEQUENCE chat.sessions_session_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5342 (class 0 OID 0)
--- Dependencies: 246
+-- TOC entry 5420 (class 0 OID 0)
+-- Dependencies: 228
 -- Name: sessions_session_id_seq; Type: SEQUENCE OWNED BY; Schema: chat; Owner: postgres
 --
 
@@ -231,7 +252,7 @@ ALTER SEQUENCE chat.sessions_session_id_seq OWNED BY chat.sessions.session_id;
 
 
 --
--- TOC entry 259 (class 1259 OID 17162)
+-- TOC entry 229 (class 1259 OID 17345)
 -- Name: tool_calls; Type: TABLE; Schema: chat; Owner: postgres
 --
 
@@ -248,14 +269,14 @@ CREATE TABLE chat.tool_calls (
     execution_time_ms integer,
     called_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     metadata jsonb DEFAULT '{}'::jsonb,
-    CONSTRAINT tool_calls_status_chk CHECK (((status)::text = ANY ((ARRAY['success'::character varying, 'failed'::character varying, 'timeout'::character varying, 'partial'::character varying])::text[])))
+    CONSTRAINT tool_calls_status_chk CHECK (((status)::text = ANY (ARRAY[('success'::character varying)::text, ('failed'::character varying)::text, ('timeout'::character varying)::text, ('partial'::character varying)::text])))
 );
 
 
 ALTER TABLE chat.tool_calls OWNER TO postgres;
 
 --
--- TOC entry 258 (class 1259 OID 17161)
+-- TOC entry 230 (class 1259 OID 17359)
 -- Name: tool_calls_tool_call_id_seq; Type: SEQUENCE; Schema: chat; Owner: postgres
 --
 
@@ -271,8 +292,8 @@ CREATE SEQUENCE chat.tool_calls_tool_call_id_seq
 ALTER SEQUENCE chat.tool_calls_tool_call_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5343 (class 0 OID 0)
--- Dependencies: 258
+-- TOC entry 5421 (class 0 OID 0)
+-- Dependencies: 230
 -- Name: tool_calls_tool_call_id_seq; Type: SEQUENCE OWNED BY; Schema: chat; Owner: postgres
 --
 
@@ -280,7 +301,7 @@ ALTER SEQUENCE chat.tool_calls_tool_call_id_seq OWNED BY chat.tool_calls.tool_ca
 
 
 --
--- TOC entry 251 (class 1259 OID 16969)
+-- TOC entry 231 (class 1259 OID 17360)
 -- Name: voice_interactions; Type: TABLE; Schema: chat; Owner: postgres
 --
 
@@ -304,7 +325,7 @@ CREATE TABLE chat.voice_interactions (
 ALTER TABLE chat.voice_interactions OWNER TO postgres;
 
 --
--- TOC entry 250 (class 1259 OID 16968)
+-- TOC entry 232 (class 1259 OID 17371)
 -- Name: voice_interactions_interaction_id_seq; Type: SEQUENCE; Schema: chat; Owner: postgres
 --
 
@@ -320,8 +341,8 @@ CREATE SEQUENCE chat.voice_interactions_interaction_id_seq
 ALTER SEQUENCE chat.voice_interactions_interaction_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5344 (class 0 OID 0)
--- Dependencies: 250
+-- TOC entry 5422 (class 0 OID 0)
+-- Dependencies: 232
 -- Name: voice_interactions_interaction_id_seq; Type: SEQUENCE OWNED BY; Schema: chat; Owner: postgres
 --
 
@@ -329,7 +350,7 @@ ALTER SEQUENCE chat.voice_interactions_interaction_id_seq OWNED BY chat.voice_in
 
 
 --
--- TOC entry 234 (class 1259 OID 16576)
+-- TOC entry 233 (class 1259 OID 17372)
 -- Name: cart; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -345,7 +366,7 @@ CREATE TABLE public.cart (
 ALTER TABLE public.cart OWNER TO postgres;
 
 --
--- TOC entry 237 (class 1259 OID 16599)
+-- TOC entry 234 (class 1259 OID 17381)
 -- Name: cart_items; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -356,14 +377,14 @@ CREATE TABLE public.cart_items (
     item_name text,
     quantity integer,
     unit_price numeric(10,2),
-    CONSTRAINT cart_items_item_type_chk CHECK ((item_type = ANY (ARRAY['menu_item'::text, 'deal'::text])))
+    CONSTRAINT cart_items_item_type_chk CHECK ((item_type = ANY (ARRAY['menu_item'::text, 'deal'::text, 'custom_deal'::text])))
 );
 
 
 ALTER TABLE public.cart_items OWNER TO postgres;
 
 --
--- TOC entry 224 (class 1259 OID 16474)
+-- TOC entry 235 (class 1259 OID 17390)
 -- Name: chef; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -379,7 +400,7 @@ CREATE TABLE public.chef (
 ALTER TABLE public.chef OWNER TO postgres;
 
 --
--- TOC entry 223 (class 1259 OID 16473)
+-- TOC entry 236 (class 1259 OID 17398)
 -- Name: chef_cheff_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -395,8 +416,8 @@ CREATE SEQUENCE public.chef_cheff_id_seq
 ALTER SEQUENCE public.chef_cheff_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5345 (class 0 OID 0)
--- Dependencies: 223
+-- TOC entry 5423 (class 0 OID 0)
+-- Dependencies: 236
 -- Name: chef_cheff_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -404,7 +425,92 @@ ALTER SEQUENCE public.chef_cheff_id_seq OWNED BY public.chef.cheff_id;
 
 
 --
--- TOC entry 228 (class 1259 OID 16500)
+-- TOC entry 265 (class 1259 OID 17829)
+-- Name: custom_deal_items; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.custom_deal_items (
+    id integer NOT NULL,
+    custom_deal_id integer NOT NULL,
+    item_id integer NOT NULL,
+    item_name text NOT NULL,
+    quantity integer DEFAULT 1 NOT NULL,
+    unit_price numeric(10,2) NOT NULL,
+    soft_rating integer
+);
+
+
+ALTER TABLE public.custom_deal_items OWNER TO postgres;
+
+--
+-- TOC entry 264 (class 1259 OID 17828)
+-- Name: custom_deal_items_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.custom_deal_items_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.custom_deal_items_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5424 (class 0 OID 0)
+-- Dependencies: 264
+-- Name: custom_deal_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.custom_deal_items_id_seq OWNED BY public.custom_deal_items.id;
+
+
+--
+-- TOC entry 263 (class 1259 OID 17809)
+-- Name: custom_deals; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.custom_deals (
+    custom_deal_id integer NOT NULL,
+    user_id uuid NOT NULL,
+    group_size integer DEFAULT 1 NOT NULL,
+    total_price numeric(10,2) NOT NULL,
+    discount_amount numeric(10,2) DEFAULT 0 NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.custom_deals OWNER TO postgres;
+
+--
+-- TOC entry 262 (class 1259 OID 17808)
+-- Name: custom_deals_custom_deal_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.custom_deals_custom_deal_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.custom_deals_custom_deal_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5425 (class 0 OID 0)
+-- Dependencies: 262
+-- Name: custom_deals_custom_deal_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.custom_deals_custom_deal_id_seq OWNED BY public.custom_deals.custom_deal_id;
+
+
+--
+-- TOC entry 237 (class 1259 OID 17399)
 -- Name: deal; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -421,7 +527,7 @@ CREATE TABLE public.deal (
 ALTER TABLE public.deal OWNER TO postgres;
 
 --
--- TOC entry 227 (class 1259 OID 16499)
+-- TOC entry 238 (class 1259 OID 17407)
 -- Name: deal_deal_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -437,8 +543,8 @@ CREATE SEQUENCE public.deal_deal_id_seq
 ALTER SEQUENCE public.deal_deal_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5346 (class 0 OID 0)
--- Dependencies: 227
+-- TOC entry 5426 (class 0 OID 0)
+-- Dependencies: 238
 -- Name: deal_deal_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -446,7 +552,7 @@ ALTER SEQUENCE public.deal_deal_id_seq OWNED BY public.deal.deal_id;
 
 
 --
--- TOC entry 229 (class 1259 OID 16511)
+-- TOC entry 239 (class 1259 OID 17408)
 -- Name: deal_item; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -460,7 +566,50 @@ CREATE TABLE public.deal_item (
 ALTER TABLE public.deal_item OWNER TO postgres;
 
 --
--- TOC entry 261 (class 1259 OID 17215)
+-- TOC entry 267 (class 1259 OID 17874)
+-- Name: favourites; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.favourites (
+    favourite_id integer NOT NULL,
+    user_id uuid NOT NULL,
+    item_id integer,
+    deal_id integer,
+    custom_deal_id integer,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fav_one_type_only CHECK ((((((item_id IS NOT NULL))::integer + ((deal_id IS NOT NULL))::integer) + ((custom_deal_id IS NOT NULL))::integer) = 1))
+);
+
+
+ALTER TABLE public.favourites OWNER TO postgres;
+
+--
+-- TOC entry 266 (class 1259 OID 17873)
+-- Name: favourites_favourite_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.favourites_favourite_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.favourites_favourite_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5427 (class 0 OID 0)
+-- Dependencies: 266
+-- Name: favourites_favourite_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.favourites_favourite_id_seq OWNED BY public.favourites.favourite_id;
+
+
+--
+-- TOC entry 240 (class 1259 OID 17414)
 -- Name: feedback; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -473,16 +622,19 @@ CREATE TABLE public.feedback (
     feedback_type character varying(30) DEFAULT 'GENERAL'::character varying,
     status character varying(20) DEFAULT 'NEW'::character varying,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    item_id integer,
+    deal_id integer,
+    custom_deal_id integer,
     CONSTRAINT feedback_rating_check CHECK (((rating >= 1) AND (rating <= 5))),
-    CONSTRAINT feedback_status_chk CHECK (((status)::text = ANY ((ARRAY['NEW'::character varying, 'REVIEWED'::character varying, 'RESOLVED'::character varying])::text[]))),
-    CONSTRAINT feedback_type_chk CHECK (((feedback_type)::text = ANY ((ARRAY['GENERAL'::character varying, 'ORDER'::character varying, 'DELIVERY'::character varying, 'APP'::character varying, 'FOOD'::character varying])::text[])))
+    CONSTRAINT feedback_status_chk CHECK (((status)::text = ANY (ARRAY[('NEW'::character varying)::text, ('REVIEWED'::character varying)::text, ('RESOLVED'::character varying)::text]))),
+    CONSTRAINT feedback_type_chk CHECK (((feedback_type)::text = ANY (ARRAY['GENERAL'::text, 'ORDER'::text, 'DELIVERY'::text, 'APP'::text, 'FOOD'::text, 'DEAL'::text, 'CUSTOM_DEAL'::text])))
 );
 
 
 ALTER TABLE public.feedback OWNER TO postgres;
 
 --
--- TOC entry 260 (class 1259 OID 17214)
+-- TOC entry 241 (class 1259 OID 17429)
 -- Name: feedback_feedback_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -498,8 +650,8 @@ CREATE SEQUENCE public.feedback_feedback_id_seq
 ALTER SEQUENCE public.feedback_feedback_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5347 (class 0 OID 0)
--- Dependencies: 260
+-- TOC entry 5428 (class 0 OID 0)
+-- Dependencies: 241
 -- Name: feedback_feedback_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -507,7 +659,7 @@ ALTER SEQUENCE public.feedback_feedback_id_seq OWNED BY public.feedback.feedback
 
 
 --
--- TOC entry 257 (class 1259 OID 17122)
+-- TOC entry 242 (class 1259 OID 17430)
 -- Name: kitchen_task_history; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -529,7 +681,7 @@ CREATE TABLE public.kitchen_task_history (
 ALTER TABLE public.kitchen_task_history OWNER TO postgres;
 
 --
--- TOC entry 256 (class 1259 OID 17121)
+-- TOC entry 243 (class 1259 OID 17442)
 -- Name: kitchen_task_history_history_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -545,8 +697,8 @@ CREATE SEQUENCE public.kitchen_task_history_history_id_seq
 ALTER SEQUENCE public.kitchen_task_history_history_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5348 (class 0 OID 0)
--- Dependencies: 256
+-- TOC entry 5429 (class 0 OID 0)
+-- Dependencies: 243
 -- Name: kitchen_task_history_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -554,7 +706,7 @@ ALTER SEQUENCE public.kitchen_task_history_history_id_seq OWNED BY public.kitche
 
 
 --
--- TOC entry 231 (class 1259 OID 16546)
+-- TOC entry 244 (class 1259 OID 17443)
 -- Name: kitchen_tasks; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -576,7 +728,7 @@ CREATE TABLE public.kitchen_tasks (
 ALTER TABLE public.kitchen_tasks OWNER TO postgres;
 
 --
--- TOC entry 226 (class 1259 OID 16486)
+-- TOC entry 245 (class 1259 OID 17453)
 -- Name: menu_item; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -602,7 +754,7 @@ CREATE TABLE public.menu_item (
 ALTER TABLE public.menu_item OWNER TO postgres;
 
 --
--- TOC entry 230 (class 1259 OID 16529)
+-- TOC entry 246 (class 1259 OID 17463)
 -- Name: menu_item_chefs; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -615,7 +767,7 @@ CREATE TABLE public.menu_item_chefs (
 ALTER TABLE public.menu_item_chefs OWNER TO postgres;
 
 --
--- TOC entry 225 (class 1259 OID 16485)
+-- TOC entry 247 (class 1259 OID 17468)
 -- Name: menu_item_item_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -631,8 +783,8 @@ CREATE SEQUENCE public.menu_item_item_id_seq
 ALTER SEQUENCE public.menu_item_item_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5349 (class 0 OID 0)
--- Dependencies: 225
+-- TOC entry 5430 (class 0 OID 0)
+-- Dependencies: 247
 -- Name: menu_item_item_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -640,7 +792,7 @@ ALTER SEQUENCE public.menu_item_item_id_seq OWNED BY public.menu_item.item_id;
 
 
 --
--- TOC entry 233 (class 1259 OID 16562)
+-- TOC entry 248 (class 1259 OID 17469)
 -- Name: offers; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -658,7 +810,7 @@ CREATE TABLE public.offers (
 ALTER TABLE public.offers OWNER TO postgres;
 
 --
--- TOC entry 232 (class 1259 OID 16561)
+-- TOC entry 249 (class 1259 OID 17480)
 -- Name: offers_offer_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -674,8 +826,8 @@ CREATE SEQUENCE public.offers_offer_id_seq
 ALTER SEQUENCE public.offers_offer_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5350 (class 0 OID 0)
--- Dependencies: 232
+-- TOC entry 5431 (class 0 OID 0)
+-- Dependencies: 249
 -- Name: offers_offer_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -683,7 +835,7 @@ ALTER SEQUENCE public.offers_offer_id_seq OWNED BY public.offers.offer_id;
 
 
 --
--- TOC entry 255 (class 1259 OID 17018)
+-- TOC entry 250 (class 1259 OID 17481)
 -- Name: order_events; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -700,7 +852,7 @@ CREATE TABLE public.order_events (
 ALTER TABLE public.order_events OWNER TO postgres;
 
 --
--- TOC entry 254 (class 1259 OID 17017)
+-- TOC entry 251 (class 1259 OID 17492)
 -- Name: order_events_event_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -716,8 +868,8 @@ CREATE SEQUENCE public.order_events_event_id_seq
 ALTER SEQUENCE public.order_events_event_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5351 (class 0 OID 0)
--- Dependencies: 254
+-- TOC entry 5432 (class 0 OID 0)
+-- Dependencies: 251
 -- Name: order_events_event_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -725,7 +877,7 @@ ALTER SEQUENCE public.order_events_event_id_seq OWNED BY public.order_events.eve
 
 
 --
--- TOC entry 241 (class 1259 OID 16768)
+-- TOC entry 252 (class 1259 OID 17493)
 -- Name: order_items; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -738,7 +890,7 @@ CREATE TABLE public.order_items (
     unit_price_snapshot numeric(12,2) NOT NULL,
     quantity integer NOT NULL,
     line_total numeric(12,2) NOT NULL,
-    CONSTRAINT order_items_item_type_chk CHECK (((item_type)::text = ANY ((ARRAY['menu_item'::character varying, 'deal'::character varying])::text[]))),
+    CONSTRAINT order_items_item_type_chk CHECK (((item_type)::text = ANY (ARRAY[('menu_item'::character varying)::text, ('deal'::character varying)::text, ('custom_deal'::character varying)::text]))),
     CONSTRAINT order_items_quantity_check CHECK ((quantity > 0))
 );
 
@@ -746,7 +898,7 @@ CREATE TABLE public.order_items (
 ALTER TABLE public.order_items OWNER TO postgres;
 
 --
--- TOC entry 240 (class 1259 OID 16767)
+-- TOC entry 253 (class 1259 OID 17508)
 -- Name: order_items_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -762,8 +914,8 @@ CREATE SEQUENCE public.order_items_id_seq
 ALTER SEQUENCE public.order_items_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5352 (class 0 OID 0)
--- Dependencies: 240
+-- TOC entry 5433 (class 0 OID 0)
+-- Dependencies: 253
 -- Name: order_items_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -771,7 +923,7 @@ ALTER SEQUENCE public.order_items_id_seq OWNED BY public.order_items.id;
 
 
 --
--- TOC entry 253 (class 1259 OID 16997)
+-- TOC entry 254 (class 1259 OID 17509)
 -- Name: order_status_history; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -789,7 +941,7 @@ CREATE TABLE public.order_status_history (
 ALTER TABLE public.order_status_history OWNER TO postgres;
 
 --
--- TOC entry 252 (class 1259 OID 16996)
+-- TOC entry 255 (class 1259 OID 17519)
 -- Name: order_status_history_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -805,8 +957,8 @@ CREATE SEQUENCE public.order_status_history_id_seq
 ALTER SEQUENCE public.order_status_history_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5353 (class 0 OID 0)
--- Dependencies: 252
+-- TOC entry 5434 (class 0 OID 0)
+-- Dependencies: 255
 -- Name: order_status_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -814,7 +966,7 @@ ALTER SEQUENCE public.order_status_history_id_seq OWNED BY public.order_status_h
 
 
 --
--- TOC entry 236 (class 1259 OID 16581)
+-- TOC entry 256 (class 1259 OID 17520)
 -- Name: orders; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -839,7 +991,7 @@ CREATE TABLE public.orders (
 ALTER TABLE public.orders OWNER TO postgres;
 
 --
--- TOC entry 235 (class 1259 OID 16577)
+-- TOC entry 257 (class 1259 OID 17534)
 -- Name: orders_order_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -855,8 +1007,8 @@ CREATE SEQUENCE public.orders_order_id_seq
 ALTER SEQUENCE public.orders_order_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5354 (class 0 OID 0)
--- Dependencies: 235
+-- TOC entry 5435 (class 0 OID 0)
+-- Dependencies: 257
 -- Name: orders_order_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -864,7 +1016,7 @@ ALTER SEQUENCE public.orders_order_id_seq OWNED BY public.orders.order_id;
 
 
 --
--- TOC entry 245 (class 1259 OID 16874)
+-- TOC entry 258 (class 1259 OID 17535)
 -- Name: payments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -881,14 +1033,14 @@ CREATE TABLE public.payments (
     status character varying DEFAULT 'PENDING'::character varying,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     payment_method character varying(20) DEFAULT 'CARD'::character varying,
-    CONSTRAINT payments_method_chk CHECK (((payment_method)::text = ANY ((ARRAY['CARD'::character varying, 'COD'::character varying])::text[])))
+    CONSTRAINT payments_method_chk CHECK (((payment_method)::text = ANY (ARRAY[('CARD'::character varying)::text, ('COD'::character varying)::text])))
 );
 
 
 ALTER TABLE public.payments OWNER TO postgres;
 
 --
--- TOC entry 244 (class 1259 OID 16873)
+-- TOC entry 259 (class 1259 OID 17548)
 -- Name: payments_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -904,8 +1056,8 @@ CREATE SEQUENCE public.payments_id_seq
 ALTER SEQUENCE public.payments_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5355 (class 0 OID 0)
--- Dependencies: 244
+-- TOC entry 5436 (class 0 OID 0)
+-- Dependencies: 259
 -- Name: payments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -913,7 +1065,7 @@ ALTER SEQUENCE public.payments_id_seq OWNED BY public.payments.id;
 
 
 --
--- TOC entry 243 (class 1259 OID 16859)
+-- TOC entry 260 (class 1259 OID 17549)
 -- Name: saved_cards; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -932,7 +1084,7 @@ CREATE TABLE public.saved_cards (
 ALTER TABLE public.saved_cards OWNER TO postgres;
 
 --
--- TOC entry 242 (class 1259 OID 16858)
+-- TOC entry 261 (class 1259 OID 17562)
 -- Name: saved_cards_card_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -948,8 +1100,8 @@ CREATE SEQUENCE public.saved_cards_card_id_seq
 ALTER SEQUENCE public.saved_cards_card_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5356 (class 0 OID 0)
--- Dependencies: 242
+-- TOC entry 5437 (class 0 OID 0)
+-- Dependencies: 261
 -- Name: saved_cards_card_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -957,7 +1109,54 @@ ALTER SEQUENCE public.saved_cards_card_id_seq OWNED BY public.saved_cards.card_i
 
 
 --
--- TOC entry 4992 (class 2604 OID 16942)
+-- TOC entry 269 (class 1259 OID 17911)
+-- Name: user_profiles; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.user_profiles (
+    profile_id integer NOT NULL,
+    user_id uuid NOT NULL,
+    preferred_cuisines jsonb DEFAULT '[]'::jsonb,
+    top_items jsonb DEFAULT '[]'::jsonb,
+    top_deals jsonb DEFAULT '[]'::jsonb,
+    disliked_items jsonb DEFAULT '[]'::jsonb,
+    preference_vector jsonb DEFAULT '{}'::jsonb,
+    cached_recommendations jsonb,
+    cached_recommendations_ts timestamp without time zone,
+    last_updated timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE public.user_profiles OWNER TO postgres;
+
+--
+-- TOC entry 268 (class 1259 OID 17910)
+-- Name: user_profiles_profile_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.user_profiles_profile_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.user_profiles_profile_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5438 (class 0 OID 0)
+-- Dependencies: 268
+-- Name: user_profiles_profile_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.user_profiles_profile_id_seq OWNED BY public.user_profiles.profile_id;
+
+
+--
+-- TOC entry 4980 (class 2604 OID 17563)
 -- Name: messages message_id; Type: DEFAULT; Schema: chat; Owner: postgres
 --
 
@@ -965,7 +1164,7 @@ ALTER TABLE ONLY chat.messages ALTER COLUMN message_id SET DEFAULT nextval('chat
 
 
 --
--- TOC entry 4985 (class 2604 OID 16918)
+-- TOC entry 4984 (class 2604 OID 17564)
 -- Name: sessions session_id; Type: DEFAULT; Schema: chat; Owner: postgres
 --
 
@@ -973,7 +1172,7 @@ ALTER TABLE ONLY chat.sessions ALTER COLUMN session_id SET DEFAULT nextval('chat
 
 
 --
--- TOC entry 5011 (class 2604 OID 17165)
+-- TOC entry 4991 (class 2604 OID 17565)
 -- Name: tool_calls tool_call_id; Type: DEFAULT; Schema: chat; Owner: postgres
 --
 
@@ -981,7 +1180,7 @@ ALTER TABLE ONLY chat.tool_calls ALTER COLUMN tool_call_id SET DEFAULT nextval('
 
 
 --
--- TOC entry 4996 (class 2604 OID 16972)
+-- TOC entry 4997 (class 2604 OID 17566)
 -- Name: voice_interactions interaction_id; Type: DEFAULT; Schema: chat; Owner: postgres
 --
 
@@ -989,7 +1188,7 @@ ALTER TABLE ONLY chat.voice_interactions ALTER COLUMN interaction_id SET DEFAULT
 
 
 --
--- TOC entry 4955 (class 2604 OID 16477)
+-- TOC entry 5003 (class 2604 OID 17567)
 -- Name: chef cheff_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -997,7 +1196,23 @@ ALTER TABLE ONLY public.chef ALTER COLUMN cheff_id SET DEFAULT nextval('public.c
 
 
 --
--- TOC entry 4959 (class 2604 OID 16503)
+-- TOC entry 5045 (class 2604 OID 17832)
+-- Name: custom_deal_items id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deal_items ALTER COLUMN id SET DEFAULT nextval('public.custom_deal_items_id_seq'::regclass);
+
+
+--
+-- TOC entry 5041 (class 2604 OID 17812)
+-- Name: custom_deals custom_deal_id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deals ALTER COLUMN custom_deal_id SET DEFAULT nextval('public.custom_deals_custom_deal_id_seq'::regclass);
+
+
+--
+-- TOC entry 5005 (class 2604 OID 17568)
 -- Name: deal deal_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1005,7 +1220,15 @@ ALTER TABLE ONLY public.deal ALTER COLUMN deal_id SET DEFAULT nextval('public.de
 
 
 --
--- TOC entry 5017 (class 2604 OID 17218)
+-- TOC entry 5047 (class 2604 OID 17877)
+-- Name: favourites favourite_id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites ALTER COLUMN favourite_id SET DEFAULT nextval('public.favourites_favourite_id_seq'::regclass);
+
+
+--
+-- TOC entry 5007 (class 2604 OID 17569)
 -- Name: feedback feedback_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1013,7 +1236,7 @@ ALTER TABLE ONLY public.feedback ALTER COLUMN feedback_id SET DEFAULT nextval('p
 
 
 --
--- TOC entry 5007 (class 2604 OID 17125)
+-- TOC entry 5011 (class 2604 OID 17570)
 -- Name: kitchen_task_history history_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1021,7 +1244,7 @@ ALTER TABLE ONLY public.kitchen_task_history ALTER COLUMN history_id SET DEFAULT
 
 
 --
--- TOC entry 4957 (class 2604 OID 16489)
+-- TOC entry 5018 (class 2604 OID 17571)
 -- Name: menu_item item_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1029,7 +1252,7 @@ ALTER TABLE ONLY public.menu_item ALTER COLUMN item_id SET DEFAULT nextval('publ
 
 
 --
--- TOC entry 4964 (class 2604 OID 16565)
+-- TOC entry 5020 (class 2604 OID 17572)
 -- Name: offers offer_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1037,7 +1260,7 @@ ALTER TABLE ONLY public.offers ALTER COLUMN offer_id SET DEFAULT nextval('public
 
 
 --
--- TOC entry 5003 (class 2604 OID 17021)
+-- TOC entry 5021 (class 2604 OID 17573)
 -- Name: order_events event_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1045,7 +1268,7 @@ ALTER TABLE ONLY public.order_events ALTER COLUMN event_id SET DEFAULT nextval('
 
 
 --
--- TOC entry 4976 (class 2604 OID 16771)
+-- TOC entry 5025 (class 2604 OID 17574)
 -- Name: order_items id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1053,7 +1276,7 @@ ALTER TABLE ONLY public.order_items ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
--- TOC entry 5000 (class 2604 OID 17000)
+-- TOC entry 5026 (class 2604 OID 17575)
 -- Name: order_status_history id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1061,7 +1284,7 @@ ALTER TABLE ONLY public.order_status_history ALTER COLUMN id SET DEFAULT nextval
 
 
 --
--- TOC entry 4967 (class 2604 OID 16586)
+-- TOC entry 5029 (class 2604 OID 17576)
 -- Name: orders order_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1069,7 +1292,7 @@ ALTER TABLE ONLY public.orders ALTER COLUMN order_id SET DEFAULT nextval('public
 
 
 --
--- TOC entry 4981 (class 2604 OID 16877)
+-- TOC entry 5033 (class 2604 OID 17577)
 -- Name: payments id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1077,7 +1300,7 @@ ALTER TABLE ONLY public.payments ALTER COLUMN id SET DEFAULT nextval('public.pay
 
 
 --
--- TOC entry 4977 (class 2604 OID 16862)
+-- TOC entry 5037 (class 2604 OID 17578)
 -- Name: saved_cards card_id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -1085,32 +1308,42 @@ ALTER TABLE ONLY public.saved_cards ALTER COLUMN card_id SET DEFAULT nextval('pu
 
 
 --
--- TOC entry 5311 (class 0 OID 16692)
--- Dependencies: 238
+-- TOC entry 5049 (class 2604 OID 17914)
+-- Name: user_profiles profile_id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_profiles ALTER COLUMN profile_id SET DEFAULT nextval('public.user_profiles_profile_id_seq'::regclass);
+
+
+--
+-- TOC entry 5364 (class 0 OID 17293)
+-- Dependencies: 223
 -- Data for Name: app_users; Type: TABLE DATA; Schema: auth; Owner: postgres
 --
 
 COPY auth.app_users (user_id, full_name, email, phone, password_hash, is_active, created_at) FROM stdin;
 66455818-2653-4201-9a6a-174d925a484b	sar	test@gmail.com	\N	$argon2id$v=19$m=65536,t=3,p=4$kXKuVarVurfWGmPs3RuDEA$YOkrrSlzEYQwZhiKsFhfEY8QCc39j1jQatU1zrWzjrw	t	2026-03-07 05:12:14.603478+05
 e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	Sarim	rasheedsarim4@gmail.com	\N	$argon2id$v=19$m=65536,t=3,p=4$ubf2HsO4lxLiXGuN8V7LWQ$8cuVNFHdIgXewjhhE9fJ10BY2Gij2n1VOBey3toPC0w	t	2026-03-17 00:45:22.723516+05
+452389e5-bbcc-4a09-b7c1-51b777953fe3	string	user@example.com	string	$argon2id$v=19$m=65536,t=3,p=4$pLQ2xhiDMEYIIeT8vxfCGA$uA9Q3wscc+BeiHvrgJcuQ2v+/eQ6Eru3z0owYvdDHQ4	t	2026-03-24 17:31:08.008865+05
 \.
 
 
 --
--- TOC entry 5312 (class 0 OID 16712)
--- Dependencies: 239
+-- TOC entry 5365 (class 0 OID 17307)
+-- Dependencies: 224
 -- Data for Name: user_preferences; Type: TABLE DATA; Schema: auth; Owner: postgres
 --
 
 COPY auth.user_preferences (user_id, preferences, updated_at) FROM stdin;
 66455818-2653-4201-9a6a-174d925a484b	{}	2026-03-07 05:12:14.603478+05
 e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	{}	2026-03-17 00:45:22.723516+05
+452389e5-bbcc-4a09-b7c1-51b777953fe3	{}	2026-03-24 17:31:08.008865+05
 \.
 
 
 --
--- TOC entry 5322 (class 0 OID 16939)
--- Dependencies: 249
+-- TOC entry 5366 (class 0 OID 17317)
+-- Dependencies: 225
 -- Data for Name: messages; Type: TABLE DATA; Schema: chat; Owner: postgres
 --
 
@@ -1119,8 +1352,8 @@ COPY chat.messages (message_id, session_id, user_id, role, message_text, message
 
 
 --
--- TOC entry 5320 (class 0 OID 16915)
--- Dependencies: 247
+-- TOC entry 5368 (class 0 OID 17331)
+-- Dependencies: 227
 -- Data for Name: sessions; Type: TABLE DATA; Schema: chat; Owner: postgres
 --
 
@@ -1129,8 +1362,8 @@ COPY chat.sessions (session_id, user_id, session_title, session_type, language, 
 
 
 --
--- TOC entry 5332 (class 0 OID 17162)
--- Dependencies: 259
+-- TOC entry 5370 (class 0 OID 17345)
+-- Dependencies: 229
 -- Data for Name: tool_calls; Type: TABLE DATA; Schema: chat; Owner: postgres
 --
 
@@ -1139,8 +1372,8 @@ COPY chat.tool_calls (tool_call_id, session_id, message_id, user_id, tool_name, 
 
 
 --
--- TOC entry 5324 (class 0 OID 16969)
--- Dependencies: 251
+-- TOC entry 5372 (class 0 OID 17360)
+-- Dependencies: 231
 -- Data for Name: voice_interactions; Type: TABLE DATA; Schema: chat; Owner: postgres
 --
 
@@ -1149,8 +1382,8 @@ COPY chat.voice_interactions (interaction_id, session_id, user_id, input_audio_p
 
 
 --
--- TOC entry 5307 (class 0 OID 16576)
--- Dependencies: 234
+-- TOC entry 5374 (class 0 OID 17372)
+-- Dependencies: 233
 -- Data for Name: cart; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1166,23 +1399,31 @@ dc3d91ae-99d5-4857-a7f6-6ad41c643bfe	inactive	2026-03-16 15:46:47.564571+05	6645
 daece598-d6a7-40e3-a7b1-3d8d8320e539	inactive	2026-03-17 03:03:57.169781+05	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0
 697b48c8-2354-435e-ae57-3fe13197849e	inactive	2026-03-17 03:04:55.35592+05	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0
 a16830a7-4a90-4889-bcc4-bf27ca18e566	inactive	2026-03-17 03:39:17.303688+05	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0
-79e9903f-f503-4f8f-9ec6-f494ca6943c0	active	2026-03-17 03:39:17.576533+05	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0
+79e9903f-f503-4f8f-9ec6-f494ca6943c0	inactive	2026-03-30 15:32:31.151086+05	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0
+f41fd794-10a0-490e-99ec-0a29eaa2a9f8	active	2026-03-30 15:32:32.596661+05	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0
 \.
 
 
 --
--- TOC entry 5310 (class 0 OID 16599)
--- Dependencies: 237
+-- TOC entry 5375 (class 0 OID 17381)
+-- Dependencies: 234
 -- Data for Name: cart_items; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 COPY public.cart_items (cart_id, item_id, item_type, item_name, quantity, unit_price) FROM stdin;
+6ba47b6c-6f79-431d-a701-1beef9a11f9c	9	menu_item	Zinger Burger	1	\N
+6ba47b6c-6f79-431d-a701-1beef9a11f9c	3	menu_item	Veggie Burger	1	\N
+6ba47b6c-6f79-431d-a701-1beef9a11f9c	1	menu_item	Cheeseburger	1	\N
+6ba47b6c-6f79-431d-a701-1beef9a11f9c	2	menu_item	Chicken Burger	1	\N
+6ba47b6c-6f79-431d-a701-1beef9a11f9c	5	menu_item	Chicken Nuggets	2	\N
+6ba47b6c-6f79-431d-a701-1beef9a11f9c	36	menu_item	Cola	1	\N
+f41fd794-10a0-490e-99ec-0a29eaa2a9f8	2	menu_item	Chicken Burger	1	375.00
 \.
 
 
 --
--- TOC entry 5297 (class 0 OID 16474)
--- Dependencies: 224
+-- TOC entry 5376 (class 0 OID 17390)
+-- Dependencies: 235
 -- Data for Name: chef; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1201,8 +1442,54 @@ COPY public.chef (cheff_id, cheff_name, specialty, active_status, max_current_or
 
 
 --
--- TOC entry 5301 (class 0 OID 16500)
--- Dependencies: 228
+-- TOC entry 5406 (class 0 OID 17829)
+-- Dependencies: 265
+-- Data for Name: custom_deal_items; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.custom_deal_items (id, custom_deal_id, item_id, item_name, quantity, unit_price, soft_rating) FROM stdin;
+1	1	31	Chicken Tikka	1	1020.00	\N
+2	1	4	Fries	1	170.00	\N
+3	1	44	Water Bottle	1	127.50	\N
+4	2	19	Chicken Manchurian	1	1062.50	\N
+5	2	20	Fish Crackers	1	425.00	\N
+6	2	38	Mint Margarita	1	297.50	\N
+7	3	13	Chicken Chow Mein	1	850.00	\N
+8	3	12	Sweet and Sour Chicken	1	977.50	\N
+9	3	15	Beef with Black Bean Sauce	1	1147.50	\N
+10	3	11	Kung Pao Chicken	1	1020.00	\N
+11	3	19	Chicken Manchurian	1	1062.50	\N
+12	3	20	Fish Crackers	2	425.00	\N
+13	3	41	Iced Coffee	3	382.50	\N
+14	3	37	Lemonade	2	212.50	\N
+15	4	8	Club Sandwich	2	595.00	\N
+16	4	2	Chicken Burger	2	318.75	\N
+17	4	6	Fish Fillet Sandwich	2	552.50	\N
+18	4	9	Zinger Burger	2	467.50	\N
+19	4	3	Veggie Burger	2	255.00	\N
+20	4	1	Cheeseburger	2	382.50	\N
+21	4	10	Loaded Fries	3	467.50	\N
+22	4	37	Lemonade	7	212.50	\N
+\.
+
+
+--
+-- TOC entry 5404 (class 0 OID 17809)
+-- Dependencies: 263
+-- Data for Name: custom_deals; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.custom_deals (custom_deal_id, user_id, group_size, total_price, discount_amount, created_at) FROM stdin;
+1	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	3	1317.50	0.00	2026-03-30 01:54:21.459178
+2	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	5	1785.00	0.00	2026-03-30 12:34:59.854849
+3	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	8	7480.00	0.00	2026-03-30 13:52:36.005213
+4	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	8	8032.50	0.00	2026-03-30 15:18:38.143708
+\.
+
+
+--
+-- TOC entry 5378 (class 0 OID 17399)
+-- Dependencies: 237
 -- Data for Name: deal; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1231,8 +1518,8 @@ COPY public.deal (deal_id, deal_name, deal_price, active, serving_size, image_ur
 
 
 --
--- TOC entry 5302 (class 0 OID 16511)
--- Dependencies: 229
+-- TOC entry 5380 (class 0 OID 17408)
+-- Dependencies: 239
 -- Data for Name: deal_item; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1325,19 +1612,29 @@ COPY public.deal_item (deal_id, menu_item_id, quantity) FROM stdin;
 
 
 --
--- TOC entry 5334 (class 0 OID 17215)
--- Dependencies: 261
--- Data for Name: feedback; Type: TABLE DATA; Schema: public; Owner: postgres
+-- TOC entry 5408 (class 0 OID 17874)
+-- Dependencies: 267
+-- Data for Name: favourites; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.feedback (feedback_id, user_id, order_id, rating, message, feedback_type, status, created_at) FROM stdin;
-1	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	10	5	ee	GENERAL	NEW	2026-03-17 03:39:33.586874
+COPY public.favourites (favourite_id, user_id, item_id, deal_id, custom_deal_id, created_at) FROM stdin;
 \.
 
 
 --
--- TOC entry 5330 (class 0 OID 17122)
--- Dependencies: 257
+-- TOC entry 5381 (class 0 OID 17414)
+-- Dependencies: 240
+-- Data for Name: feedback; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.feedback (feedback_id, user_id, order_id, rating, message, feedback_type, status, created_at, item_id, deal_id, custom_deal_id) FROM stdin;
+1	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	10	5	ee	GENERAL	NEW	2026-03-17 03:39:33.586874	\N	\N	\N
+\.
+
+
+--
+-- TOC entry 5383 (class 0 OID 17430)
+-- Dependencies: 242
 -- Data for Name: kitchen_task_history; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1346,8 +1643,8 @@ COPY public.kitchen_task_history (history_id, task_id, order_id, old_status, new
 
 
 --
--- TOC entry 5304 (class 0 OID 16546)
--- Dependencies: 231
+-- TOC entry 5385 (class 0 OID 17443)
+-- Dependencies: 244
 -- Data for Name: kitchen_tasks; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1385,12 +1682,20 @@ COPY public.kitchen_tasks (task_id, order_id, menu_item_id, item_name, qty, stat
 10-1	10	2	Chicken Burger	1	FRY	akbar ahmed	15	QUEUED	2026-03-17 03:39:17.303688+05	2026-03-17 03:39:17.303688+05
 10-2	10	7	Onion Rings	1	FRY	abdul mateen	10	QUEUED	2026-03-17 03:39:17.303688+05	2026-03-17 03:39:17.303688+05
 10-3	10	37	Lemonade	1	DRINKS	Fazal Haq	5	QUEUED	2026-03-17 03:39:17.303688+05	2026-03-17 03:39:17.303688+05
+11-1	11	1	Cheeseburger	2	FRY	akbar ahmed	15	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-2	11	2	Chicken Burger	2	FRY	abdul mateen	15	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-3	11	3	Veggie Burger	2	FRY	akbar ahmed	15	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-4	11	6	Fish Fillet Sandwich	2	FRY	abdul mateen	15	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-5	11	8	Club Sandwich	2	FRY	akbar ahmed	15	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-6	11	9	Zinger Burger	2	FRY	abdul mateen	15	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-7	11	10	Loaded Fries	3	FRY	akbar ahmed	10	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
+11-8	11	37	Lemonade	7	DRINKS	Fazal Haq	5	QUEUED	2026-03-30 15:32:31.151086+05	2026-03-30 15:32:31.151086+05
 \.
 
 
 --
--- TOC entry 5299 (class 0 OID 16486)
--- Dependencies: 226
+-- TOC entry 5386 (class 0 OID 17453)
+-- Dependencies: 245
 -- Data for Name: menu_item; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1448,8 +1753,8 @@ COPY public.menu_item (item_id, item_name, item_description, item_category, item
 
 
 --
--- TOC entry 5303 (class 0 OID 16529)
--- Dependencies: 230
+-- TOC entry 5387 (class 0 OID 17463)
+-- Dependencies: 246
 -- Data for Name: menu_item_chefs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1541,8 +1846,8 @@ COPY public.menu_item_chefs (menu_item_id, chef_id) FROM stdin;
 
 
 --
--- TOC entry 5306 (class 0 OID 16562)
--- Dependencies: 233
+-- TOC entry 5389 (class 0 OID 17469)
+-- Dependencies: 248
 -- Data for Name: offers; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1554,8 +1859,8 @@ COPY public.offers (offer_id, title, description, offer_code, validity, category
 
 
 --
--- TOC entry 5328 (class 0 OID 17018)
--- Dependencies: 255
+-- TOC entry 5391 (class 0 OID 17481)
+-- Dependencies: 250
 -- Data for Name: order_events; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1564,8 +1869,8 @@ COPY public.order_events (event_id, order_id, event_type, event_source, event_da
 
 
 --
--- TOC entry 5314 (class 0 OID 16768)
--- Dependencies: 241
+-- TOC entry 5393 (class 0 OID 17493)
+-- Dependencies: 252
 -- Data for Name: order_items; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1583,12 +1888,13 @@ COPY public.order_items (id, order_id, item_type, item_id, name_snapshot, unit_p
 11	8	deal	2	Fast Solo B	877.50	1	877.50
 12	9	deal	1	Fast Solo A	720.00	1	720.00
 13	10	deal	2	Fast Solo B	877.50	1	877.50
+14	11	custom_deal	4	Custom Deal (for 8 people)	8032.50	1	8032.50
 \.
 
 
 --
--- TOC entry 5326 (class 0 OID 16997)
--- Dependencies: 253
+-- TOC entry 5395 (class 0 OID 17509)
+-- Dependencies: 254
 -- Data for Name: order_status_history; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1597,8 +1903,8 @@ COPY public.order_status_history (id, order_id, old_status, new_status, changed_
 
 
 --
--- TOC entry 5309 (class 0 OID 16581)
--- Dependencies: 236
+-- TOC entry 5397 (class 0 OID 17520)
+-- Dependencies: 256
 -- Data for Name: orders; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1613,12 +1919,13 @@ COPY public.orders (order_id, cart_id, total_price, estimated_prep_time_minutes,
 8	daece598-d6a7-40e3-a7b1-3d8d8320e539	1071.38	15	{"tax": 43.88, "items": [{"item_id": 2, "quantity": 1, "item_name": "Fast Solo B", "item_type": "deal", "line_total": 877.5, "unit_price": 877.5}], "subtotal": 877.5, "total_price": 1071.38, "delivery_fee": 150.0}	2026-03-17 03:03:57.169781+05	confirmed	2026-03-17 03:03:57.169781+05	123 Main St, City, State 12345	877.50	43.88	150.00	COD
 9	697b48c8-2354-435e-ae57-3fe13197849e	906.00	15	{"tax": 36.0, "items": [{"item_id": 1, "quantity": 1, "item_name": "Fast Solo A", "item_type": "deal", "line_total": 720.0, "unit_price": 720.0}], "subtotal": 720.0, "total_price": 906.0, "delivery_fee": 150.0}	2026-03-17 03:04:55.35592+05	confirmed	2026-03-17 03:04:55.35592+05	123 Main St, City, State 12345	720.00	36.00	150.00	CARD
 10	a16830a7-4a90-4889-bcc4-bf27ca18e566	1071.38	15	{"tax": 43.88, "items": [{"item_id": 2, "quantity": 1, "item_name": "Fast Solo B", "item_type": "deal", "line_total": 877.5, "unit_price": 877.5}], "subtotal": 877.5, "total_price": 1071.38, "delivery_fee": 150.0}	2026-03-17 03:39:17.303688+05	confirmed	2026-03-17 03:39:17.303688+05	123 Main St, City, State 12345	877.50	43.88	150.00	COD
+11	79e9903f-f503-4f8f-9ec6-f494ca6943c0	8584.12	15	{"tax": 401.62, "items": [{"item_id": 4, "quantity": 1, "item_name": "Custom Deal (for 8 people)", "item_type": "custom_deal", "line_total": 8032.5, "unit_price": 8032.5}], "subtotal": 8032.5, "total_price": 8584.12, "delivery_fee": 150.0}	2026-03-30 15:32:31.151086+05	confirmed	2026-03-30 15:32:31.151086+05	123 Main St, City, State 12345	8032.50	401.62	150.00	COD
 \.
 
 
 --
--- TOC entry 5318 (class 0 OID 16874)
--- Dependencies: 245
+-- TOC entry 5399 (class 0 OID 17535)
+-- Dependencies: 258
 -- Data for Name: payments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1636,8 +1943,8 @@ COPY public.payments (id, transaction_id, order_id, user_id, card_id, amount, ca
 
 
 --
--- TOC entry 5316 (class 0 OID 16859)
--- Dependencies: 243
+-- TOC entry 5401 (class 0 OID 17549)
+-- Dependencies: 260
 -- Data for Name: saved_cards; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -1649,8 +1956,19 @@ COPY public.saved_cards (card_id, user_id, card_type, last4, cardholder_name, ex
 
 
 --
--- TOC entry 5357 (class 0 OID 0)
--- Dependencies: 248
+-- TOC entry 5410 (class 0 OID 17911)
+-- Dependencies: 269
+-- Data for Name: user_profiles; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.user_profiles (profile_id, user_id, preferred_cuisines, top_items, top_deals, disliked_items, preference_vector, cached_recommendations, cached_recommendations_ts, last_updated, created_at) FROM stdin;
+1	e12875d7-4de0-4ffd-a5d5-bea0c174d6a0	["Fast Food", "Drinks"]	[{"score": 10.0, "item_id": 3, "item_name": "Veggie Burger", "order_count": 0, "last_ordered": null}, {"score": 10.0, "item_id": 5, "item_name": "Chicken Nuggets", "order_count": 0, "last_ordered": null}, {"score": 10.0, "item_id": 6, "item_name": "Fish Fillet Sandwich", "order_count": 0, "last_ordered": null}, {"score": 10.0, "item_id": 39, "item_name": "Green Tea", "order_count": 0, "last_ordered": null}]	[]	[]	{"3": 10.0, "5": 10.0, "6": 10.0, "39": 10.0}	{"source": "llm_personalization", "from_cache": false, "generated_at": "2026-04-02T09:37:54.127663+00:00", "recommended_deals": [{"score": 90, "reason": "This deal is a great option for a single person looking for a fast food meal during lunch.", "source": "llm_personalization", "deal_id": 1, "deal_name": "Fast Solo A"}, {"score": 80, "reason": "Another solo deal that offers a variety of fast food items, suitable for lunch.", "source": "llm_personalization", "deal_id": 2, "deal_name": "Fast Solo B"}, {"score": 70, "reason": "If you're dining with someone, this duo deal provides a good selection of fast food items for lunch.", "source": "llm_personalization", "deal_id": 3, "deal_name": "Fast Duo"}], "recommended_items": [{"score": 100, "reason": "You have a high preference for Veggie Burger, so it's a great choice for lunch.", "source": "llm_personalization", "item_id": 3, "item_name": "Veggie Burger"}, {"score": 100, "reason": "Chicken Nuggets are one of your top preferences, making it an excellent option for lunch.", "source": "llm_personalization", "item_id": 5, "item_name": "Chicken Nuggets"}, {"score": 100, "reason": "Fish Fillet Sandwich is another top item on your list, so it's a great choice to consider.", "source": "llm_personalization", "item_id": 6, "item_name": "Fish Fillet Sandwich"}, {"score": 80, "reason": "As a similar item to Veggie Burger, Cheeseburger is a good alternative to try during lunch.", "source": "llm_personalization", "item_id": 1, "item_name": "Cheeseburger"}, {"score": 80, "reason": "Fries are a classic fast food item that pairs well with many meals, including your preferred items.", "source": "llm_personalization", "item_id": 4, "item_name": "Fries"}]}	2026-04-02 14:37:45.940562	2026-04-02 14:37:45.77697	2026-03-19 16:27:10.265519
+\.
+
+
+--
+-- TOC entry 5439 (class 0 OID 0)
+-- Dependencies: 226
 -- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: chat; Owner: postgres
 --
 
@@ -1658,8 +1976,8 @@ SELECT pg_catalog.setval('chat.messages_message_id_seq', 1, false);
 
 
 --
--- TOC entry 5358 (class 0 OID 0)
--- Dependencies: 246
+-- TOC entry 5440 (class 0 OID 0)
+-- Dependencies: 228
 -- Name: sessions_session_id_seq; Type: SEQUENCE SET; Schema: chat; Owner: postgres
 --
 
@@ -1667,8 +1985,8 @@ SELECT pg_catalog.setval('chat.sessions_session_id_seq', 1, false);
 
 
 --
--- TOC entry 5359 (class 0 OID 0)
--- Dependencies: 258
+-- TOC entry 5441 (class 0 OID 0)
+-- Dependencies: 230
 -- Name: tool_calls_tool_call_id_seq; Type: SEQUENCE SET; Schema: chat; Owner: postgres
 --
 
@@ -1676,8 +1994,8 @@ SELECT pg_catalog.setval('chat.tool_calls_tool_call_id_seq', 1, false);
 
 
 --
--- TOC entry 5360 (class 0 OID 0)
--- Dependencies: 250
+-- TOC entry 5442 (class 0 OID 0)
+-- Dependencies: 232
 -- Name: voice_interactions_interaction_id_seq; Type: SEQUENCE SET; Schema: chat; Owner: postgres
 --
 
@@ -1685,8 +2003,8 @@ SELECT pg_catalog.setval('chat.voice_interactions_interaction_id_seq', 1, false)
 
 
 --
--- TOC entry 5361 (class 0 OID 0)
--- Dependencies: 223
+-- TOC entry 5443 (class 0 OID 0)
+-- Dependencies: 236
 -- Name: chef_cheff_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1694,8 +2012,26 @@ SELECT pg_catalog.setval('public.chef_cheff_id_seq', 10, true);
 
 
 --
--- TOC entry 5362 (class 0 OID 0)
--- Dependencies: 227
+-- TOC entry 5444 (class 0 OID 0)
+-- Dependencies: 264
+-- Name: custom_deal_items_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.custom_deal_items_id_seq', 22, true);
+
+
+--
+-- TOC entry 5445 (class 0 OID 0)
+-- Dependencies: 262
+-- Name: custom_deals_custom_deal_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.custom_deals_custom_deal_id_seq', 4, true);
+
+
+--
+-- TOC entry 5446 (class 0 OID 0)
+-- Dependencies: 238
 -- Name: deal_deal_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1703,8 +2039,17 @@ SELECT pg_catalog.setval('public.deal_deal_id_seq', 20, true);
 
 
 --
--- TOC entry 5363 (class 0 OID 0)
--- Dependencies: 260
+-- TOC entry 5447 (class 0 OID 0)
+-- Dependencies: 266
+-- Name: favourites_favourite_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.favourites_favourite_id_seq', 1, false);
+
+
+--
+-- TOC entry 5448 (class 0 OID 0)
+-- Dependencies: 241
 -- Name: feedback_feedback_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1712,8 +2057,8 @@ SELECT pg_catalog.setval('public.feedback_feedback_id_seq', 1, true);
 
 
 --
--- TOC entry 5364 (class 0 OID 0)
--- Dependencies: 256
+-- TOC entry 5449 (class 0 OID 0)
+-- Dependencies: 243
 -- Name: kitchen_task_history_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1721,8 +2066,8 @@ SELECT pg_catalog.setval('public.kitchen_task_history_history_id_seq', 1, false)
 
 
 --
--- TOC entry 5365 (class 0 OID 0)
--- Dependencies: 225
+-- TOC entry 5450 (class 0 OID 0)
+-- Dependencies: 247
 -- Name: menu_item_item_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1730,8 +2075,8 @@ SELECT pg_catalog.setval('public.menu_item_item_id_seq', 49, true);
 
 
 --
--- TOC entry 5366 (class 0 OID 0)
--- Dependencies: 232
+-- TOC entry 5451 (class 0 OID 0)
+-- Dependencies: 249
 -- Name: offers_offer_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1739,8 +2084,8 @@ SELECT pg_catalog.setval('public.offers_offer_id_seq', 3, true);
 
 
 --
--- TOC entry 5367 (class 0 OID 0)
--- Dependencies: 254
+-- TOC entry 5452 (class 0 OID 0)
+-- Dependencies: 251
 -- Name: order_events_event_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1748,17 +2093,17 @@ SELECT pg_catalog.setval('public.order_events_event_id_seq', 1, false);
 
 
 --
--- TOC entry 5368 (class 0 OID 0)
--- Dependencies: 240
+-- TOC entry 5453 (class 0 OID 0)
+-- Dependencies: 253
 -- Name: order_items_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.order_items_id_seq', 13, true);
+SELECT pg_catalog.setval('public.order_items_id_seq', 14, true);
 
 
 --
--- TOC entry 5369 (class 0 OID 0)
--- Dependencies: 252
+-- TOC entry 5454 (class 0 OID 0)
+-- Dependencies: 255
 -- Name: order_status_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1766,17 +2111,17 @@ SELECT pg_catalog.setval('public.order_status_history_id_seq', 1, false);
 
 
 --
--- TOC entry 5370 (class 0 OID 0)
--- Dependencies: 235
+-- TOC entry 5455 (class 0 OID 0)
+-- Dependencies: 257
 -- Name: orders_order_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.orders_order_id_seq', 10, true);
+SELECT pg_catalog.setval('public.orders_order_id_seq', 11, true);
 
 
 --
--- TOC entry 5371 (class 0 OID 0)
--- Dependencies: 244
+-- TOC entry 5456 (class 0 OID 0)
+-- Dependencies: 259
 -- Name: payments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1784,8 +2129,8 @@ SELECT pg_catalog.setval('public.payments_id_seq', 9, true);
 
 
 --
--- TOC entry 5372 (class 0 OID 0)
--- Dependencies: 242
+-- TOC entry 5457 (class 0 OID 0)
+-- Dependencies: 261
 -- Name: saved_cards_card_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -1793,7 +2138,16 @@ SELECT pg_catalog.setval('public.saved_cards_card_id_seq', 4, true);
 
 
 --
--- TOC entry 5060 (class 2606 OID 16709)
+-- TOC entry 5458 (class 0 OID 0)
+-- Dependencies: 268
+-- Name: user_profiles_profile_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.user_profiles_profile_id_seq', 6, true);
+
+
+--
+-- TOC entry 5074 (class 2606 OID 17580)
 -- Name: app_users app_users_email_key; Type: CONSTRAINT; Schema: auth; Owner: postgres
 --
 
@@ -1802,7 +2156,7 @@ ALTER TABLE ONLY auth.app_users
 
 
 --
--- TOC entry 5062 (class 2606 OID 16711)
+-- TOC entry 5076 (class 2606 OID 17582)
 -- Name: app_users app_users_phone_key; Type: CONSTRAINT; Schema: auth; Owner: postgres
 --
 
@@ -1811,7 +2165,7 @@ ALTER TABLE ONLY auth.app_users
 
 
 --
--- TOC entry 5064 (class 2606 OID 16707)
+-- TOC entry 5078 (class 2606 OID 17584)
 -- Name: app_users app_users_pkey; Type: CONSTRAINT; Schema: auth; Owner: postgres
 --
 
@@ -1820,7 +2174,7 @@ ALTER TABLE ONLY auth.app_users
 
 
 --
--- TOC entry 5066 (class 2606 OID 16723)
+-- TOC entry 5080 (class 2606 OID 17586)
 -- Name: user_preferences user_preferences_pkey; Type: CONSTRAINT; Schema: auth; Owner: postgres
 --
 
@@ -1829,7 +2183,7 @@ ALTER TABLE ONLY auth.user_preferences
 
 
 --
--- TOC entry 5085 (class 2606 OID 16953)
+-- TOC entry 5085 (class 2606 OID 17588)
 -- Name: messages messages_pkey; Type: CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -1838,7 +2192,7 @@ ALTER TABLE ONLY chat.messages
 
 
 --
--- TOC entry 5080 (class 2606 OID 16930)
+-- TOC entry 5089 (class 2606 OID 17590)
 -- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -1847,7 +2201,7 @@ ALTER TABLE ONLY chat.sessions
 
 
 --
--- TOC entry 5112 (class 2606 OID 17177)
+-- TOC entry 5096 (class 2606 OID 17592)
 -- Name: tool_calls tool_calls_pkey; Type: CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -1856,7 +2210,7 @@ ALTER TABLE ONLY chat.tool_calls
 
 
 --
--- TOC entry 5090 (class 2606 OID 16982)
+-- TOC entry 5101 (class 2606 OID 17594)
 -- Name: voice_interactions voice_interactions_pkey; Type: CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -1865,7 +2219,7 @@ ALTER TABLE ONLY chat.voice_interactions
 
 
 --
--- TOC entry 5058 (class 2606 OID 16608)
+-- TOC entry 5106 (class 2606 OID 17596)
 -- Name: cart_items cart_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1874,7 +2228,7 @@ ALTER TABLE ONLY public.cart_items
 
 
 --
--- TOC entry 5051 (class 2606 OID 16598)
+-- TOC entry 5103 (class 2606 OID 17598)
 -- Name: cart cart_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1883,7 +2237,7 @@ ALTER TABLE ONLY public.cart
 
 
 --
--- TOC entry 5037 (class 2606 OID 16484)
+-- TOC entry 5108 (class 2606 OID 17600)
 -- Name: chef chef_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1892,7 +2246,25 @@ ALTER TABLE ONLY public.chef
 
 
 --
--- TOC entry 5043 (class 2606 OID 16518)
+-- TOC entry 5159 (class 2606 OID 17843)
+-- Name: custom_deal_items custom_deal_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deal_items
+    ADD CONSTRAINT custom_deal_items_pkey PRIMARY KEY (id);
+
+
+--
+-- TOC entry 5157 (class 2606 OID 17822)
+-- Name: custom_deals custom_deals_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deals
+    ADD CONSTRAINT custom_deals_pkey PRIMARY KEY (custom_deal_id);
+
+
+--
+-- TOC entry 5112 (class 2606 OID 17602)
 -- Name: deal_item deal_item_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1901,7 +2273,7 @@ ALTER TABLE ONLY public.deal_item
 
 
 --
--- TOC entry 5041 (class 2606 OID 16510)
+-- TOC entry 5110 (class 2606 OID 17604)
 -- Name: deal deal_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1910,7 +2282,43 @@ ALTER TABLE ONLY public.deal
 
 
 --
--- TOC entry 5114 (class 2606 OID 17232)
+-- TOC entry 5161 (class 2606 OID 17889)
+-- Name: favourites fav_unique_user_custom_deal; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT fav_unique_user_custom_deal UNIQUE (user_id, custom_deal_id);
+
+
+--
+-- TOC entry 5163 (class 2606 OID 17887)
+-- Name: favourites fav_unique_user_deal; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT fav_unique_user_deal UNIQUE (user_id, deal_id);
+
+
+--
+-- TOC entry 5165 (class 2606 OID 17885)
+-- Name: favourites fav_unique_user_item; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT fav_unique_user_item UNIQUE (user_id, item_id);
+
+
+--
+-- TOC entry 5167 (class 2606 OID 17883)
+-- Name: favourites favourites_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT favourites_pkey PRIMARY KEY (favourite_id);
+
+
+--
+-- TOC entry 5114 (class 2606 OID 17606)
 -- Name: feedback feedback_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1919,7 +2327,7 @@ ALTER TABLE ONLY public.feedback
 
 
 --
--- TOC entry 5105 (class 2606 OID 17136)
+-- TOC entry 5124 (class 2606 OID 17608)
 -- Name: kitchen_task_history kitchen_task_history_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1928,7 +2336,7 @@ ALTER TABLE ONLY public.kitchen_task_history
 
 
 --
--- TOC entry 5047 (class 2606 OID 16557)
+-- TOC entry 5126 (class 2606 OID 17610)
 -- Name: kitchen_tasks kitchen_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1937,7 +2345,7 @@ ALTER TABLE ONLY public.kitchen_tasks
 
 
 --
--- TOC entry 5045 (class 2606 OID 16535)
+-- TOC entry 5130 (class 2606 OID 17612)
 -- Name: menu_item_chefs menu_item_chefs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1946,7 +2354,7 @@ ALTER TABLE ONLY public.menu_item_chefs
 
 
 --
--- TOC entry 5039 (class 2606 OID 16498)
+-- TOC entry 5128 (class 2606 OID 17614)
 -- Name: menu_item menu_item_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1955,7 +2363,7 @@ ALTER TABLE ONLY public.menu_item
 
 
 --
--- TOC entry 5049 (class 2606 OID 16575)
+-- TOC entry 5132 (class 2606 OID 17616)
 -- Name: offers offers_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1964,7 +2372,7 @@ ALTER TABLE ONLY public.offers
 
 
 --
--- TOC entry 5099 (class 2606 OID 17031)
+-- TOC entry 5137 (class 2606 OID 17618)
 -- Name: order_events order_events_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1973,7 +2381,7 @@ ALTER TABLE ONLY public.order_events
 
 
 --
--- TOC entry 5069 (class 2606 OID 16784)
+-- TOC entry 5140 (class 2606 OID 17620)
 -- Name: order_items order_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1982,7 +2390,7 @@ ALTER TABLE ONLY public.order_items
 
 
 --
--- TOC entry 5094 (class 2606 OID 17009)
+-- TOC entry 5144 (class 2606 OID 17622)
 -- Name: order_status_history order_status_history_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1991,7 +2399,7 @@ ALTER TABLE ONLY public.order_status_history
 
 
 --
--- TOC entry 5054 (class 2606 OID 16806)
+-- TOC entry 5146 (class 2606 OID 17624)
 -- Name: orders orders_cart_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2000,7 +2408,7 @@ ALTER TABLE ONLY public.orders
 
 
 --
--- TOC entry 5056 (class 2606 OID 16597)
+-- TOC entry 5148 (class 2606 OID 17626)
 -- Name: orders orders_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2009,7 +2417,7 @@ ALTER TABLE ONLY public.orders
 
 
 --
--- TOC entry 5076 (class 2606 OID 16890)
+-- TOC entry 5152 (class 2606 OID 17628)
 -- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2018,7 +2426,7 @@ ALTER TABLE ONLY public.payments
 
 
 --
--- TOC entry 5072 (class 2606 OID 16888)
+-- TOC entry 5155 (class 2606 OID 17630)
 -- Name: saved_cards saved_cards_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2027,7 +2435,25 @@ ALTER TABLE ONLY public.saved_cards
 
 
 --
--- TOC entry 5081 (class 1259 OID 16966)
+-- TOC entry 5172 (class 2606 OID 17927)
+-- Name: user_profiles user_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_pkey PRIMARY KEY (profile_id);
+
+
+--
+-- TOC entry 5174 (class 2606 OID 17929)
+-- Name: user_profiles user_profiles_user_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_user_id_key UNIQUE (user_id);
+
+
+--
+-- TOC entry 5081 (class 1259 OID 17631)
 -- Name: idx_chat_messages_created_at; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2035,7 +2461,7 @@ CREATE INDEX idx_chat_messages_created_at ON chat.messages USING btree (created_
 
 
 --
--- TOC entry 5082 (class 1259 OID 16967)
+-- TOC entry 5082 (class 1259 OID 17632)
 -- Name: idx_chat_messages_role; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2043,7 +2469,7 @@ CREATE INDEX idx_chat_messages_role ON chat.messages USING btree (role);
 
 
 --
--- TOC entry 5083 (class 1259 OID 16965)
+-- TOC entry 5083 (class 1259 OID 17633)
 -- Name: idx_chat_messages_session_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2051,7 +2477,7 @@ CREATE INDEX idx_chat_messages_session_id ON chat.messages USING btree (session_
 
 
 --
--- TOC entry 5077 (class 1259 OID 16937)
+-- TOC entry 5086 (class 1259 OID 17634)
 -- Name: idx_chat_sessions_last_activity; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2059,7 +2485,7 @@ CREATE INDEX idx_chat_sessions_last_activity ON chat.sessions USING btree (last_
 
 
 --
--- TOC entry 5078 (class 1259 OID 16936)
+-- TOC entry 5087 (class 1259 OID 17635)
 -- Name: idx_chat_sessions_user_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2067,7 +2493,7 @@ CREATE INDEX idx_chat_sessions_user_id ON chat.sessions USING btree (user_id);
 
 
 --
--- TOC entry 5106 (class 1259 OID 17198)
+-- TOC entry 5090 (class 1259 OID 17636)
 -- Name: idx_tool_calls_called_at; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2075,7 +2501,7 @@ CREATE INDEX idx_tool_calls_called_at ON chat.tool_calls USING btree (called_at)
 
 
 --
--- TOC entry 5107 (class 1259 OID 17195)
+-- TOC entry 5091 (class 1259 OID 17637)
 -- Name: idx_tool_calls_message_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2083,7 +2509,7 @@ CREATE INDEX idx_tool_calls_message_id ON chat.tool_calls USING btree (message_i
 
 
 --
--- TOC entry 5108 (class 1259 OID 17194)
+-- TOC entry 5092 (class 1259 OID 17638)
 -- Name: idx_tool_calls_session_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2091,7 +2517,7 @@ CREATE INDEX idx_tool_calls_session_id ON chat.tool_calls USING btree (session_i
 
 
 --
--- TOC entry 5109 (class 1259 OID 17197)
+-- TOC entry 5093 (class 1259 OID 17639)
 -- Name: idx_tool_calls_tool_name; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2099,7 +2525,7 @@ CREATE INDEX idx_tool_calls_tool_name ON chat.tool_calls USING btree (tool_name)
 
 
 --
--- TOC entry 5110 (class 1259 OID 17196)
+-- TOC entry 5094 (class 1259 OID 17640)
 -- Name: idx_tool_calls_user_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2107,7 +2533,7 @@ CREATE INDEX idx_tool_calls_user_id ON chat.tool_calls USING btree (user_id);
 
 
 --
--- TOC entry 5086 (class 1259 OID 16995)
+-- TOC entry 5097 (class 1259 OID 17641)
 -- Name: idx_voice_interactions_created_at; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2115,7 +2541,7 @@ CREATE INDEX idx_voice_interactions_created_at ON chat.voice_interactions USING 
 
 
 --
--- TOC entry 5087 (class 1259 OID 16993)
+-- TOC entry 5098 (class 1259 OID 17642)
 -- Name: idx_voice_interactions_session_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2123,7 +2549,7 @@ CREATE INDEX idx_voice_interactions_session_id ON chat.voice_interactions USING 
 
 
 --
--- TOC entry 5088 (class 1259 OID 16994)
+-- TOC entry 5099 (class 1259 OID 17643)
 -- Name: idx_voice_interactions_user_id; Type: INDEX; Schema: chat; Owner: postgres
 --
 
@@ -2131,7 +2557,15 @@ CREATE INDEX idx_voice_interactions_user_id ON chat.voice_interactions USING btr
 
 
 --
--- TOC entry 5115 (class 1259 OID 17245)
+-- TOC entry 5115 (class 1259 OID 17867)
+-- Name: feedback_user_order_unique; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX feedback_user_order_unique ON public.feedback USING btree (user_id, order_id) WHERE ((item_id IS NULL) AND (order_id IS NOT NULL));
+
+
+--
+-- TOC entry 5116 (class 1259 OID 17644)
 -- Name: idx_feedback_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2139,7 +2573,7 @@ CREATE INDEX idx_feedback_created_at ON public.feedback USING btree (created_at)
 
 
 --
--- TOC entry 5116 (class 1259 OID 17244)
+-- TOC entry 5117 (class 1259 OID 17645)
 -- Name: idx_feedback_order_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2147,7 +2581,7 @@ CREATE INDEX idx_feedback_order_id ON public.feedback USING btree (order_id);
 
 
 --
--- TOC entry 5117 (class 1259 OID 17243)
+-- TOC entry 5118 (class 1259 OID 17646)
 -- Name: idx_feedback_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2155,7 +2589,7 @@ CREATE INDEX idx_feedback_user_id ON public.feedback USING btree (user_id);
 
 
 --
--- TOC entry 5100 (class 1259 OID 17159)
+-- TOC entry 5119 (class 1259 OID 17647)
 -- Name: idx_kitchen_task_history_changed_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2163,7 +2597,7 @@ CREATE INDEX idx_kitchen_task_history_changed_at ON public.kitchen_task_history 
 
 
 --
--- TOC entry 5101 (class 1259 OID 17160)
+-- TOC entry 5120 (class 1259 OID 17648)
 -- Name: idx_kitchen_task_history_new_cheff_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2171,7 +2605,7 @@ CREATE INDEX idx_kitchen_task_history_new_cheff_id ON public.kitchen_task_histor
 
 
 --
--- TOC entry 5102 (class 1259 OID 17158)
+-- TOC entry 5121 (class 1259 OID 17649)
 -- Name: idx_kitchen_task_history_order_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2179,7 +2613,7 @@ CREATE INDEX idx_kitchen_task_history_order_id ON public.kitchen_task_history US
 
 
 --
--- TOC entry 5103 (class 1259 OID 17157)
+-- TOC entry 5122 (class 1259 OID 17650)
 -- Name: idx_kitchen_task_history_task_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2187,7 +2621,7 @@ CREATE INDEX idx_kitchen_task_history_task_id ON public.kitchen_task_history USI
 
 
 --
--- TOC entry 5095 (class 1259 OID 17039)
+-- TOC entry 5133 (class 1259 OID 17651)
 -- Name: idx_order_events_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2195,7 +2629,7 @@ CREATE INDEX idx_order_events_created_at ON public.order_events USING btree (cre
 
 
 --
--- TOC entry 5096 (class 1259 OID 17038)
+-- TOC entry 5134 (class 1259 OID 17652)
 -- Name: idx_order_events_event_type; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2203,7 +2637,7 @@ CREATE INDEX idx_order_events_event_type ON public.order_events USING btree (eve
 
 
 --
--- TOC entry 5097 (class 1259 OID 17037)
+-- TOC entry 5135 (class 1259 OID 17653)
 -- Name: idx_order_events_order_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2211,7 +2645,7 @@ CREATE INDEX idx_order_events_order_id ON public.order_events USING btree (order
 
 
 --
--- TOC entry 5067 (class 1259 OID 16790)
+-- TOC entry 5138 (class 1259 OID 17654)
 -- Name: idx_order_items_order_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2219,7 +2653,7 @@ CREATE INDEX idx_order_items_order_id ON public.order_items USING btree (order_i
 
 
 --
--- TOC entry 5091 (class 1259 OID 17016)
+-- TOC entry 5141 (class 1259 OID 17655)
 -- Name: idx_order_status_history_changed_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2227,7 +2661,7 @@ CREATE INDEX idx_order_status_history_changed_at ON public.order_status_history 
 
 
 --
--- TOC entry 5092 (class 1259 OID 17015)
+-- TOC entry 5142 (class 1259 OID 17656)
 -- Name: idx_order_status_history_order_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2235,7 +2669,7 @@ CREATE INDEX idx_order_status_history_order_id ON public.order_status_history US
 
 
 --
--- TOC entry 5073 (class 1259 OID 16913)
+-- TOC entry 5149 (class 1259 OID 17657)
 -- Name: idx_payments_order_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2243,7 +2677,7 @@ CREATE INDEX idx_payments_order_id ON public.payments USING btree (order_id);
 
 
 --
--- TOC entry 5074 (class 1259 OID 16912)
+-- TOC entry 5150 (class 1259 OID 17658)
 -- Name: idx_payments_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2251,7 +2685,7 @@ CREATE INDEX idx_payments_user_id ON public.payments USING btree (user_id);
 
 
 --
--- TOC entry 5070 (class 1259 OID 16911)
+-- TOC entry 5153 (class 1259 OID 17659)
 -- Name: idx_saved_cards_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2259,7 +2693,31 @@ CREATE INDEX idx_saved_cards_user_id ON public.saved_cards USING btree (user_id)
 
 
 --
--- TOC entry 5052 (class 1259 OID 16796)
+-- TOC entry 5168 (class 1259 OID 17937)
+-- Name: idx_user_profiles_cache_ts; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_user_profiles_cache_ts ON public.user_profiles USING btree (cached_recommendations_ts);
+
+
+--
+-- TOC entry 5169 (class 1259 OID 17936)
+-- Name: idx_user_profiles_updated; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_user_profiles_updated ON public.user_profiles USING btree (last_updated);
+
+
+--
+-- TOC entry 5170 (class 1259 OID 17935)
+-- Name: idx_user_profiles_user_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_user_profiles_user_id ON public.user_profiles USING btree (user_id);
+
+
+--
+-- TOC entry 5104 (class 1259 OID 17660)
 -- Name: unique_active_cart_per_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2267,7 +2725,7 @@ CREATE UNIQUE INDEX unique_active_cart_per_user ON public.cart USING btree (user
 
 
 --
--- TOC entry 5148 (class 2620 OID 16730)
+-- TOC entry 5215 (class 2620 OID 17661)
 -- Name: user_preferences trg_user_preferences_updated; Type: TRIGGER; Schema: auth; Owner: postgres
 --
 
@@ -2275,7 +2733,7 @@ CREATE TRIGGER trg_user_preferences_updated BEFORE UPDATE ON auth.user_preferenc
 
 
 --
--- TOC entry 5147 (class 2620 OID 16802)
+-- TOC entry 5216 (class 2620 OID 17662)
 -- Name: orders trg_orders_updated; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -2283,7 +2741,7 @@ CREATE TRIGGER trg_orders_updated BEFORE UPDATE ON public.orders FOR EACH ROW EX
 
 
 --
--- TOC entry 5125 (class 2606 OID 16724)
+-- TOC entry 5175 (class 2606 OID 17663)
 -- Name: user_preferences user_preferences_user_id_fkey; Type: FK CONSTRAINT; Schema: auth; Owner: postgres
 --
 
@@ -2292,7 +2750,7 @@ ALTER TABLE ONLY auth.user_preferences
 
 
 --
--- TOC entry 5132 (class 2606 OID 16954)
+-- TOC entry 5176 (class 2606 OID 17668)
 -- Name: messages messages_session_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2301,7 +2759,7 @@ ALTER TABLE ONLY chat.messages
 
 
 --
--- TOC entry 5133 (class 2606 OID 16959)
+-- TOC entry 5177 (class 2606 OID 17673)
 -- Name: messages messages_user_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2310,7 +2768,7 @@ ALTER TABLE ONLY chat.messages
 
 
 --
--- TOC entry 5131 (class 2606 OID 16931)
+-- TOC entry 5178 (class 2606 OID 17678)
 -- Name: sessions sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2319,7 +2777,7 @@ ALTER TABLE ONLY chat.sessions
 
 
 --
--- TOC entry 5142 (class 2606 OID 17183)
+-- TOC entry 5179 (class 2606 OID 17683)
 -- Name: tool_calls tool_calls_message_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2328,7 +2786,7 @@ ALTER TABLE ONLY chat.tool_calls
 
 
 --
--- TOC entry 5143 (class 2606 OID 17178)
+-- TOC entry 5180 (class 2606 OID 17688)
 -- Name: tool_calls tool_calls_session_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2337,7 +2795,7 @@ ALTER TABLE ONLY chat.tool_calls
 
 
 --
--- TOC entry 5144 (class 2606 OID 17188)
+-- TOC entry 5181 (class 2606 OID 17693)
 -- Name: tool_calls tool_calls_user_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2346,7 +2804,7 @@ ALTER TABLE ONLY chat.tool_calls
 
 
 --
--- TOC entry 5134 (class 2606 OID 16983)
+-- TOC entry 5182 (class 2606 OID 17698)
 -- Name: voice_interactions voice_interactions_session_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2355,7 +2813,7 @@ ALTER TABLE ONLY chat.voice_interactions
 
 
 --
--- TOC entry 5135 (class 2606 OID 16988)
+-- TOC entry 5183 (class 2606 OID 17703)
 -- Name: voice_interactions voice_interactions_user_id_fkey; Type: FK CONSTRAINT; Schema: chat; Owner: postgres
 --
 
@@ -2364,7 +2822,7 @@ ALTER TABLE ONLY chat.voice_interactions
 
 
 --
--- TOC entry 5124 (class 2606 OID 16609)
+-- TOC entry 5185 (class 2606 OID 17708)
 -- Name: cart_items cart_items_cart_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2373,7 +2831,7 @@ ALTER TABLE ONLY public.cart_items
 
 
 --
--- TOC entry 5122 (class 2606 OID 16791)
+-- TOC entry 5184 (class 2606 OID 17713)
 -- Name: cart cart_user_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2382,7 +2840,34 @@ ALTER TABLE ONLY public.cart
 
 
 --
--- TOC entry 5118 (class 2606 OID 16519)
+-- TOC entry 5208 (class 2606 OID 17844)
+-- Name: custom_deal_items custom_deal_items_custom_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deal_items
+    ADD CONSTRAINT custom_deal_items_custom_deal_id_fkey FOREIGN KEY (custom_deal_id) REFERENCES public.custom_deals(custom_deal_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5209 (class 2606 OID 17849)
+-- Name: custom_deal_items custom_deal_items_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deal_items
+    ADD CONSTRAINT custom_deal_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.menu_item(item_id);
+
+
+--
+-- TOC entry 5207 (class 2606 OID 17823)
+-- Name: custom_deals custom_deals_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.custom_deals
+    ADD CONSTRAINT custom_deals_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.app_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5186 (class 2606 OID 17718)
 -- Name: deal_item deal_item_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2391,7 +2876,7 @@ ALTER TABLE ONLY public.deal_item
 
 
 --
--- TOC entry 5119 (class 2606 OID 16524)
+-- TOC entry 5187 (class 2606 OID 17723)
 -- Name: deal_item deal_item_menu_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2400,7 +2885,70 @@ ALTER TABLE ONLY public.deal_item
 
 
 --
--- TOC entry 5145 (class 2606 OID 17238)
+-- TOC entry 5210 (class 2606 OID 17905)
+-- Name: favourites favourites_custom_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT favourites_custom_deal_id_fkey FOREIGN KEY (custom_deal_id) REFERENCES public.custom_deals(custom_deal_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5211 (class 2606 OID 17900)
+-- Name: favourites favourites_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT favourites_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES public.deal(deal_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5212 (class 2606 OID 17895)
+-- Name: favourites favourites_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT favourites_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.menu_item(item_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5213 (class 2606 OID 17890)
+-- Name: favourites favourites_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.favourites
+    ADD CONSTRAINT favourites_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.app_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5188 (class 2606 OID 17868)
+-- Name: feedback feedback_custom_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_custom_deal_id_fkey FOREIGN KEY (custom_deal_id) REFERENCES public.custom_deals(custom_deal_id);
+
+
+--
+-- TOC entry 5189 (class 2606 OID 17861)
+-- Name: feedback feedback_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES public.deal(deal_id);
+
+
+--
+-- TOC entry 5190 (class 2606 OID 17856)
+-- Name: feedback feedback_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.menu_item(item_id);
+
+
+--
+-- TOC entry 5191 (class 2606 OID 17728)
 -- Name: feedback fk_feedback_order; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2409,7 +2957,7 @@ ALTER TABLE ONLY public.feedback
 
 
 --
--- TOC entry 5146 (class 2606 OID 17233)
+-- TOC entry 5192 (class 2606 OID 17733)
 -- Name: feedback fk_feedback_user; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2418,7 +2966,7 @@ ALTER TABLE ONLY public.feedback
 
 
 --
--- TOC entry 5138 (class 2606 OID 17152)
+-- TOC entry 5193 (class 2606 OID 17738)
 -- Name: kitchen_task_history kitchen_task_history_new_cheff_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2427,7 +2975,7 @@ ALTER TABLE ONLY public.kitchen_task_history
 
 
 --
--- TOC entry 5139 (class 2606 OID 17147)
+-- TOC entry 5194 (class 2606 OID 17743)
 -- Name: kitchen_task_history kitchen_task_history_old_cheff_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2436,7 +2984,7 @@ ALTER TABLE ONLY public.kitchen_task_history
 
 
 --
--- TOC entry 5140 (class 2606 OID 17142)
+-- TOC entry 5195 (class 2606 OID 17748)
 -- Name: kitchen_task_history kitchen_task_history_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2445,7 +2993,7 @@ ALTER TABLE ONLY public.kitchen_task_history
 
 
 --
--- TOC entry 5141 (class 2606 OID 17137)
+-- TOC entry 5196 (class 2606 OID 17753)
 -- Name: kitchen_task_history kitchen_task_history_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2454,7 +3002,7 @@ ALTER TABLE ONLY public.kitchen_task_history
 
 
 --
--- TOC entry 5120 (class 2606 OID 16541)
+-- TOC entry 5197 (class 2606 OID 17758)
 -- Name: menu_item_chefs menu_item_chefs_chef_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2463,7 +3011,7 @@ ALTER TABLE ONLY public.menu_item_chefs
 
 
 --
--- TOC entry 5121 (class 2606 OID 16536)
+-- TOC entry 5198 (class 2606 OID 17763)
 -- Name: menu_item_chefs menu_item_chefs_menu_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2472,7 +3020,7 @@ ALTER TABLE ONLY public.menu_item_chefs
 
 
 --
--- TOC entry 5137 (class 2606 OID 17032)
+-- TOC entry 5199 (class 2606 OID 17768)
 -- Name: order_events order_events_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2481,7 +3029,7 @@ ALTER TABLE ONLY public.order_events
 
 
 --
--- TOC entry 5126 (class 2606 OID 16785)
+-- TOC entry 5200 (class 2606 OID 17773)
 -- Name: order_items order_items_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2490,7 +3038,7 @@ ALTER TABLE ONLY public.order_items
 
 
 --
--- TOC entry 5136 (class 2606 OID 17010)
+-- TOC entry 5201 (class 2606 OID 17778)
 -- Name: order_status_history order_status_history_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2499,7 +3047,7 @@ ALTER TABLE ONLY public.order_status_history
 
 
 --
--- TOC entry 5123 (class 2606 OID 16810)
+-- TOC entry 5202 (class 2606 OID 17783)
 -- Name: orders orders_cart_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2508,7 +3056,7 @@ ALTER TABLE ONLY public.orders
 
 
 --
--- TOC entry 5128 (class 2606 OID 16906)
+-- TOC entry 5203 (class 2606 OID 17788)
 -- Name: payments payments_card_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2517,7 +3065,7 @@ ALTER TABLE ONLY public.payments
 
 
 --
--- TOC entry 5129 (class 2606 OID 16901)
+-- TOC entry 5204 (class 2606 OID 17793)
 -- Name: payments payments_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2526,7 +3074,7 @@ ALTER TABLE ONLY public.payments
 
 
 --
--- TOC entry 5130 (class 2606 OID 16896)
+-- TOC entry 5205 (class 2606 OID 17798)
 -- Name: payments payments_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2535,7 +3083,7 @@ ALTER TABLE ONLY public.payments
 
 
 --
--- TOC entry 5127 (class 2606 OID 16891)
+-- TOC entry 5206 (class 2606 OID 17803)
 -- Name: saved_cards saved_cards_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2543,225 +3091,29 @@ ALTER TABLE ONLY public.saved_cards
     ADD CONSTRAINT saved_cards_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.app_users(user_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-03-17 10:33:48
+--
+-- TOC entry 5214 (class 2606 OID 17930)
+-- Name: user_profiles user_profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.app_users(user_id) ON DELETE CASCADE;
+
+
+--
+-- TOC entry 5417 (class 0 OID 0)
+-- Dependencies: 6
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: postgres
+--
+
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
+
+
+-- Completed on 2026-04-02 14:54:58
 
 --
 -- PostgreSQL database dump complete
 --
 
+\unrestrict J35mgRtI3lNPn9fWzX6pS0PNcNzaN1fbE30tNepQdAa54sb0fgRSmx97kMPxalo
 
--- ============================================================
--- Custom Deal Tables — added for custom_deal cart integration
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.custom_deals (
-    custom_deal_id  SERIAL PRIMARY KEY,
-    user_id         UUID NOT NULL REFERENCES auth.app_users(user_id) ON DELETE CASCADE,
-    group_size      INTEGER NOT NULL DEFAULT 1,
-    total_price     NUMERIC(10,2) NOT NULL,
-    discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
-    created_at      TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-ALTER TABLE public.custom_deals OWNER TO postgres;
-
-
-CREATE TABLE IF NOT EXISTS public.custom_deal_items (
-    id              SERIAL PRIMARY KEY,
-    custom_deal_id  INTEGER NOT NULL REFERENCES public.custom_deals(custom_deal_id) ON DELETE CASCADE,
-    item_id         INTEGER NOT NULL REFERENCES public.menu_item(item_id),
-    item_name       TEXT NOT NULL,
-    quantity        INTEGER NOT NULL DEFAULT 1,
-    unit_price      NUMERIC(10,2) NOT NULL
-);
-
-ALTER TABLE public.custom_deal_items OWNER TO postgres;
-
-
--- Allow item_type = 'custom_deal' in cart_items
-ALTER TABLE public.cart_items DROP CONSTRAINT IF EXISTS cart_items_item_type_chk;
-ALTER TABLE public.cart_items ADD CONSTRAINT cart_items_item_type_chk
-    CHECK (item_type = ANY (ARRAY['menu_item'::text, 'deal'::text, 'custom_deal'::text]));
-
--- Allow item_type = 'custom_deal' in order_items
-ALTER TABLE public.order_items DROP CONSTRAINT IF EXISTS order_items_item_type_chk;
-ALTER TABLE public.order_items ADD CONSTRAINT order_items_item_type_chk
-    CHECK ((item_type)::text = ANY (
-        (ARRAY['menu_item'::character varying, 'deal'::character varying, 'custom_deal'::character varying])::text[]
-    ));
-
---- feedback for personal and custom deals ---
-
-ALTER TABLE public.feedback
-    ADD COLUMN IF NOT EXISTS item_id INTEGER REFERENCES public.menu_item(item_id) NULL;
-
-ALTER TABLE public.feedback
-    ADD COLUMN IF NOT EXISTS deal_id INTEGER REFERENCES public.deal(deal_id) NULL;
-
-ALTER TABLE public.feedback
-    DROP CONSTRAINT IF EXISTS feedback_type_chk;
-
-ALTER TABLE public.feedback
-    ADD CONSTRAINT feedback_type_chk
-    CHECK ((feedback_type)::text = ANY (
-        (ARRAY['GENERAL','ORDER','DELIVERY','APP','FOOD','DEAL','CUSTOM_DEAL'])::text[]
-    ));
-
-CREATE UNIQUE INDEX IF NOT EXISTS feedback_user_order_unique
-    ON public.feedback (user_id, order_id)
-    WHERE item_id IS NULL AND order_id IS NOT NULL;
-
-
-
------ For testing ---
-
-SELECT * FROM public.custom_deals ORDER BY created_at DESC LIMIT 3;
-SELECT * FROM public.custom_deal_items WHERE custom_deal_id = 5;
-SELECT * FROM public.cart_items WHERE item_type = 'custom_deal';
-
-SELECT kt.task_id, kt.order_id, kt.menu_item_id, kt.item_name, kt.qty
-FROM kitchen_tasks kt
-ORDER BY kt.created_at DESC LIMIT 10;
-
-SELECT order_id, item_id, item_type, quantity
-FROM order_items
-ORDER BY order_id DESC LIMIT 10;
-
-SELECT * FROM custom_deals ORDER BY created_at DESC LIMIT 3;
-SELECT * FROM custom_deal_items ORDER BY id DESC LIMIT 10;
-
-SELECT order_id, item_id, item_type, quantity
-FROM order_items
-ORDER BY order_id DESC LIMIT 10;
-
-SELECT * FROM custom_deals ORDER BY created_at DESC LIMIT 3;
-
-SELECT * FROM feedback WHERE order_id = 18;
-
--- ============================================================
--- CUSTOM DEAL FEEDBACK MIGRATION
--- ============================================================
-
--- Add custom_deal_id column to feedback (nullable FK to custom_deals)
-ALTER TABLE public.feedback
-    ADD COLUMN IF NOT EXISTS custom_deal_id INTEGER
-    REFERENCES public.custom_deals(custom_deal_id) NULL;
-
--- Add soft_rating column to custom_deal_items for personalization inference
-ALTER TABLE public.custom_deal_items
-    ADD COLUMN IF NOT EXISTS soft_rating INTEGER NULL;
-
--- ============================================================
--- FAVOURITES TABLE
--- ============================================================
-CREATE TABLE IF NOT EXISTS public.favourites (
-    favourite_id   SERIAL PRIMARY KEY,
-    user_id        UUID NOT NULL REFERENCES auth.app_users(user_id) ON DELETE CASCADE,
-    item_id        INTEGER REFERENCES public.menu_item(item_id) ON DELETE CASCADE NULL,
-    deal_id        INTEGER REFERENCES public.deal(deal_id) ON DELETE CASCADE NULL,
-    custom_deal_id INTEGER REFERENCES public.custom_deals(custom_deal_id) ON DELETE CASCADE NULL,
-    created_at     TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fav_one_type_only CHECK (
-        (item_id IS NOT NULL)::int +
-        (deal_id IS NOT NULL)::int +
-        (custom_deal_id IS NOT NULL)::int = 1
-    ),
-    CONSTRAINT fav_unique_user_item UNIQUE (user_id, item_id),
-    CONSTRAINT fav_unique_user_deal UNIQUE (user_id, deal_id),
-    CONSTRAINT fav_unique_user_custom_deal UNIQUE (user_id, custom_deal_id)
-);
-
--- ============================================================
--- USER PROFILES TABLE  (Phase 2 - Personalization)
--- ============================================================
-CREATE TABLE IF NOT EXISTS public.user_profiles (
-    profile_id                SERIAL PRIMARY KEY,
-    user_id                   UUID NOT NULL UNIQUE
-                              REFERENCES auth.app_users(user_id) ON DELETE CASCADE,
-    preferred_cuisines        JSONB DEFAULT '[]',
-    top_items                 JSONB DEFAULT '[]',
-    top_deals                 JSONB DEFAULT '[]',
-    disliked_items            JSONB DEFAULT '[]',
-    preference_vector         JSONB DEFAULT '{}',
-    cached_recommendations    JSONB DEFAULT NULL,
-    cached_recommendations_ts TIMESTAMP DEFAULT NULL,
-    last_updated              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id
-    ON public.user_profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_updated
-    ON public.user_profiles(last_updated);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_cache_ts
-    ON public.user_profiles(cached_recommendations_ts);
-
-
------------------------------------------------------
------------------- admin profile --------------------
------------------------------------------------------
-
-INSERT INTO auth.app_users (full_name, email, password_hash, is_active)
-VALUES (
-    'Admin',
-    'admin@gmail.com',
-    '$argon2id$v=19$m=65536,t=3,p=4$7h0jRIjxHgPgHEPIOWcsRQ$IQmy+119dEKCCGNX7WZFoKgDjvkE7y9ir3cQ6xTbtxA',
-    TRUE
-)
-ON CONFLICT (email) DO UPDATE
-
-
--- ============================================
--- DINE-IN FEATURE TABLES 
--- Added: March 31, 2026
--- ============================================
-
-CREATE TABLE IF NOT EXISTS public.restaurant_tables (
-    table_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    table_number VARCHAR(10) NOT NULL,
-    table_pin   VARCHAR(6) NOT NULL,
-    qr_token    VARCHAR(64) UNIQUE,
-    status      VARCHAR(30) DEFAULT 'available',
-    created_at  TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_tables_status ON public.restaurant_tables(status);
-
-
-CREATE TABLE IF NOT EXISTS public.dine_in_sessions (
-    session_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    table_id       UUID NOT NULL REFERENCES public.restaurant_tables(table_id) ON DELETE CASCADE,
-    started_at     TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    ended_at       TIMESTAMP WITHOUT TIME ZONE,
-    status         VARCHAR(30) DEFAULT 'active',
-    payment_method VARCHAR(20),
-    total_amount   NUMERIC(10,2) DEFAULT 0,
-    round_count    INTEGER DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_sessions_table  ON public.dine_in_sessions(table_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_status ON public.dine_in_sessions(status);
-
-
-
-ALTER TABLE public.orders
-    ADD COLUMN IF NOT EXISTS order_type      VARCHAR(20) DEFAULT 'delivery',
-    ADD COLUMN IF NOT EXISTS table_id        UUID REFERENCES public.restaurant_tables(table_id) ON DELETE SET NULL,
-    ADD COLUMN IF NOT EXISTS session_id      UUID REFERENCES public.dine_in_sessions(session_id) ON DELETE SET NULL,
-    ADD COLUMN IF NOT EXISTS round_number    INTEGER,
-    ADD COLUMN IF NOT EXISTS payment_status  VARCHAR(20) DEFAULT NULL;
-
-
--- 1. waiter_calls table
-CREATE TABLE IF NOT EXISTS waiter_calls (
-    call_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    table_id UUID REFERENCES restaurant_tables(table_id),
-    called_at TIMESTAMP DEFAULT NOW(),
-    resolved BOOLEAN DEFAULT false
-);
-
-CREATE INDEX IF NOT EXISTS idx_waiter_calls_resolved 
-    ON waiter_calls(resolved);
-
-CREATE INDEX IF NOT EXISTS idx_waiter_calls_table
-    ON waiter_calls(table_id);

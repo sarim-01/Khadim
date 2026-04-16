@@ -3,7 +3,7 @@ import 'add_payment_screen.dart';
 import 'package:khaadim/services/card_service.dart';
 
 class PaymentMethodsScreen extends StatefulWidget {
-  const PaymentMethodsScreen({Key? key}) : super(key: key);
+  const PaymentMethodsScreen({super.key});
 
   @override
   State<PaymentMethodsScreen> createState() => _PaymentMethodsScreenState();
@@ -259,7 +259,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
       ],
     );
   }

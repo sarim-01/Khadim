@@ -5,12 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:khaadim/models/recommendation_result.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/services/cart_service.dart';
-import 'package:khaadim/services/personalization_service.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
 
 class RecommendedForYouSection extends StatefulWidget {
   final Future<RecommendationResult> future;
-  const RecommendedForYouSection({Key? key, required this.future}) : super(key: key);
+  const RecommendedForYouSection({super.key, required this.future});
 
   @override
   State<RecommendedForYouSection> createState() =>
@@ -54,21 +53,19 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
         quantity: 1,
       );
       await cart.sync();
-      if (mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('${item.itemName} added to cart!'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 1),
-        ));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${item.itemName} added to cart!'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 1),
+      ));
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
-          content: Text('Could not add ${item.itemName}'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 1),
-        ));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not add ${item.itemName}'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 1),
+      ));
     } finally {
       if (mounted) setState(() => _adding.remove(item.itemId));
     }
@@ -204,7 +201,8 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
                     child: SizedBox(
                       height: 28,
                       child: ElevatedButton(
-                        onPressed: isAdding ? null : () => _addToCart(context, item),
+                        onPressed:
+                            isAdding ? null : () => _addToCart(context, item),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: theme.colorScheme.primary,
                           foregroundColor: Colors.white,
@@ -227,7 +225,8 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
                               )
                             : const Text(
                                 '+ Add',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    fontSize: 11, fontWeight: FontWeight.w600),
                               ),
                       ),
                     ),
@@ -254,7 +253,8 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
               height: 18,
               width: 180,
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withOpacity(_shimmerAnim.value * 0.12),
+                color: theme.colorScheme.onSurface
+                    .withOpacity(_shimmerAnim.value * 0.12),
                 borderRadius: BorderRadius.circular(6),
               ),
             ),
@@ -270,7 +270,8 @@ class _RecommendedForYouSectionState extends State<RecommendedForYouSection>
             builder: (_, __) => Container(
               height: 90,
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurface.withOpacity(_shimmerAnim.value * 0.08),
+                color: theme.colorScheme.onSurface
+                    .withOpacity(_shimmerAnim.value * 0.08),
                 borderRadius: BorderRadius.circular(14),
               ),
             ),

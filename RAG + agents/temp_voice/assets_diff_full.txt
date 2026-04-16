@@ -1,0 +1,73 @@
+MINE_FILES=38
+HIS_FILES=75
+ONLY_MINE=14
+ONLY_HIS=51
+CHANGED_COMMON=0
+---ONLY_MINE---
+images/deals/deal_bbq.jpeg
+images/deals/deal_chinese.jpeg
+images/deals/deal_desi.jpeg
+images/deals/deal_drinks.jpeg
+images/deals/deal_fastfood.jpeg
+images/menu/chinese/chow_mein.jpeg
+images/menu/chinese/hot_sour_soup.jpeg
+images/menu/chinese/kung_pao.jpeg
+images/menu/chinese/manchurian.jpeg
+images/menu/chinese/spring_rolls.jpeg
+images/menu/drinks/cola.jpeg
+images/menu/fast_food/burger.jpeg
+images/menu/fast_food/chicken_burger.jpeg
+images/menu/fast_food/nuggets.jpeg
+---ONLY_HIS---
+images/deals/BBQ deals/bbq duo.png
+images/deals/BBQ deals/bbq_party_A.png
+images/deals/BBQ deals/bbq_party_B.png
+images/deals/BBQ deals/bbq_solo.png
+images/deals/BBQ deals/bbq_squad.png
+images/deals/Chinese Deals/chinese_duo.png
+images/deals/Chinese Deals/chinese_party.png
+images/deals/Chinese Deals/chinese_solo.png
+images/deals/Chinese Deals/chinese_squad_A.png
+images/deals/Chinese Deals/Chinese_Squad_B.png
+images/deals/custom_deal.png
+images/deals/Desi deals/desi_duo.png
+images/deals/Desi deals/desi_party.png
+images/deals/Desi deals/desi_solo.png
+images/deals/Desi deals/desi_squad_A.png
+images/deals/Desi deals/desi_squad_B.png
+images/deals/FastFood deals/Fast_Duo.png
+images/deals/FastFood deals/Fast_food_big_party.png
+images/deals/FastFood deals/Fast_solo_A.png
+images/deals/FastFood deals/Fast_solo_B.png
+images/deals/FastFood deals/Fast_squad.png
+images/menu/chinese/beef szechuan.png
+images/menu/chinese/beef with black bean sauce.png
+images/menu/chinese/chicken chow mein.png
+images/menu/chinese/chicken manchurian.png
+images/menu/chinese/egg fried rice.png
+images/menu/chinese/fish crackers.png
+images/menu/chinese/hot and sour soup.png
+images/menu/chinese/kung pao chicken.png
+images/menu/chinese/sweet and sour chicken.png
+images/menu/chinese/vagetable spring rolls.png
+images/menu/desi/Aloo Paratha.png
+images/menu/desi/beef biryani.png
+images/menu/desi/chapati.png
+images/menu/desi/Chicken Handi.png
+images/menu/desi/palak paneer.png
+images/menu/desi/samosa platter.png
+images/menu/desi/Seekh kabab.png
+images/menu/drinks/cola.jpg
+images/menu/drinks/green tea.png
+images/menu/drinks/Mineral water.png
+images/menu/drinks/orange juice.png
+images/menu/drinks/strawberry shake.png
+images/menu/fast_food/cheeseburger.png
+images/menu/fast_food/chicken nuggets.png
+images/menu/fast_food/chicken_burger.png
+images/menu/fast_food/club sandwich.png
+images/menu/fast_food/fish fillet sandwich.png
+images/menu/fast_food/onion rings.png
+images/menu/fast_food/veggie burger.png
+images/menu/fast_food/zinger burger.png
+---CHANGED_COMMON---

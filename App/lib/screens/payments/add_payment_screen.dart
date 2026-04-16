@@ -1,10 +1,9 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:khaadim/services/card_service.dart';
 
 class AddPaymentScreen extends StatefulWidget {
-  const AddPaymentScreen({Key? key}) : super(key: key);
+  const AddPaymentScreen({super.key});
 
   @override
   State<AddPaymentScreen> createState() => _AddPaymentScreenState();
@@ -42,6 +41,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
     return sum % 10 == 0;
   }
+
   // ── Brand detection ─────────────────────────────────────────────
   String _detectBrand(String number) {
     final d = number.replaceAll(' ', '');
@@ -109,6 +109,7 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
 
     return null;
   }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -161,8 +162,10 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
     final rawNum = _cardNumberController.text.replaceAll(' ', '');
     final masked = rawNum.isEmpty
         ? '•••• •••• •••• ••••'
-        : rawNum.padRight(16, '•').replaceAllMapped(
-            RegExp(r'.{4}'), (m) => '${m.group(0)} ').trim();
+        : rawNum
+            .padRight(16, '•')
+            .replaceAllMapped(RegExp(r'.{4}'), (m) => '${m.group(0)} ')
+            .trim();
     final displayName = _nameController.text.isEmpty
         ? 'CARDHOLDER NAME'
         : _nameController.text.toUpperCase();
@@ -390,7 +393,8 @@ class _AddPaymentScreenState extends State<AddPaymentScreen> {
                             maxLength: 3,
                             obscureText: true,
                             validator: (v) {
-                              final brand = _detectBrand(_cardNumberController.text);
+                              final brand =
+                                  _detectBrand(_cardNumberController.text);
                               final requiredLength = brand == 'Amex' ? 4 : 3;
 
                               if (v == null || v.trim().isEmpty) {
@@ -478,4 +482,3 @@ class _ExpiryFormatter extends TextInputFormatter {
     return newValue;
   }
 }
-

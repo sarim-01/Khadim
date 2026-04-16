@@ -49,4 +49,22 @@ class FavouritesService {
       retryOnNetworkError: true,
     );
   }
+
+  // Voice helper endpoint compatibility for command execution.
+  static Future<Map<String, dynamic>> manageVoiceFavourites({
+    required String action,
+    required String itemName,
+    required String language,
+  }) async {
+    return ApiClient.postJson(
+      '/voice/favourites',
+      auth: true,
+      timeout: ApiClient.defaultTimeout,
+      body: {
+        'action': action,
+        'item_name': itemName,
+        'language': language,
+      },
+    );
+  }
 }

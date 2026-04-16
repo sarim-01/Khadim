@@ -5,12 +5,14 @@ import 'package:khaadim/screens/discover/home_screen.dart';
 import 'package:khaadim/screens/menu/menu_screen.dart';
 import 'package:khaadim/screens/discover/offer_screen.dart';
 import 'package:khaadim/screens/profile/profile_screen.dart';
-import 'package:khaadim/screens/chat/chat_bottom_sheet.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/screens/cart/cart_screen.dart';
+import 'package:khaadim/widgets/mic_button.dart';
+import 'package:khaadim/widgets/voice_order_handler.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  const MainScreen({super.key});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -18,6 +20,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  late final VoiceOrderHandler _voiceHandler;
 
   final List<Widget> _screens = const [
     HomeScreen(key: ValueKey('home')),
@@ -26,9 +29,59 @@ class _MainScreenState extends State<MainScreen> {
     ProfileScreen(key: ValueKey('profile')),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _voiceHandler = VoiceOrderHandler();
+    _voiceHandler.init();
+    _voiceHandler.setNavCallbacks(
+      VoiceNavCallbacks(
+        switchTab: (index) => _onTabTapped(index),
+        openMenuWithFilter: ({String? cuisine, String? category}) {
+          _onTabTapped(1);
+        },
+        openCart: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CartScreen()),
+          );
+        },
+        openCheckout: ({String paymentMethod = 'COD'}) {
+          Navigator.pushNamed(
+            context,
+            '/checkout',
+            arguments: {'payment_method': paymentMethod},
+          );
+        },
+        openOrders: () {
+          Navigator.pushNamed(context, '/order_history');
+        },
+        openFavourites: () {
+          Navigator.pushNamed(context, '/profile');
+        },
+        openRecommendations: () {
+          _onTabTapped(0);
+        },
+        openDealsWithFilter: ({
+          String? cuisineFilter,
+          String? servingFilter,
+          int? highlightDealId,
+        }) {
+          _onTabTapped(2);
+        },
+      ),
+    );
+  }
+
   void _onTabTapped(int index) {
     if (index == _currentIndex) return;
     setState(() => _currentIndex = index);
+  }
+
+  @override
+  void dispose() {
+    _voiceHandler.dispose();
+    super.dispose();
   }
 
   @override
@@ -59,10 +112,14 @@ class _MainScreenState extends State<MainScreen> {
         selectedItemColor: theme.colorScheme.primary,
         unselectedItemColor: theme.textTheme.bodyMedium?.color,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.restaurant_menu), label: "Menu"),
-          BottomNavigationBarItem(icon: Icon(Icons.local_offer_outlined), label: "Deals"),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined), label: "Home"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.restaurant_menu), label: "Menu"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.local_offer_outlined), label: "Deals"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline), label: "Profile"),
         ],
       ),
 
@@ -72,33 +129,16 @@ class _MainScreenState extends State<MainScreen> {
       floatingActionButton: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          // Voice AI button
-          FloatingActionButton(
-            backgroundColor: theme.colorScheme.primary,
-            foregroundColor: Colors.black,
-            heroTag: "voiceButton",
-            child: const Icon(Icons.mic_none_rounded),
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (context) {
-                  return DraggableScrollableSheet(
-                    initialChildSize: 0.65,
-                    minChildSize: 0.4,
-                    maxChildSize: 0.95,
-                    expand: false,
-                    builder: (_, controller) {
-                      return ChatBottomSheet(
-                        mode: "voice",
-                        scrollController: controller,
-                      );
-                    },
-                  );
-                },
-              );
-            },
+          // Voice mic button (hold to record) - no extra screen.
+          AnimatedBuilder(
+            animation: _voiceHandler,
+            builder: (_, __) => MicButton(
+              isRecording: _voiceHandler.isRecording,
+              isProcessing: _voiceHandler.isProcessing,
+              onPressDown: () => _voiceHandler.onMicDown(context),
+              onPressUp: () => _voiceHandler.onMicUp(context),
+              onCancel: _voiceHandler.onMicCancel,
+            ),
           ),
 
           // Cart button with badge
@@ -135,8 +175,8 @@ class _MainScreenState extends State<MainScreen> {
                       right: 0,
                       top: 0,
                       child: Container(
-                        padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.redAccent,
                           borderRadius: BorderRadius.circular(10),

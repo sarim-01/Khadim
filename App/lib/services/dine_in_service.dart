@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'api_config.dart';
+
 class DineInService {
-  static const String _baseUrl = 'http://192.168.100.30:8000';
+  static String get _baseUrl => ApiConfig.baseUrl;
 
   Future<Map<String, dynamic>> tableLogin(
     String tableNumber,
@@ -91,12 +93,11 @@ class DineInService {
     String? token,
     bool forCashPayment = false,
   }) async {
-    final uri = Uri.parse('$_baseUrl/dine-in/sessions/$sessionId/call-waiter')
-        .replace(
-          queryParameters: forCashPayment
-              ? <String, String>{'for_cash_payment': 'true'}
-              : null,
-        );
+    final uri =
+        Uri.parse('$_baseUrl/dine-in/sessions/$sessionId/call-waiter').replace(
+      queryParameters:
+          forCashPayment ? <String, String>{'for_cash_payment': 'true'} : null,
+    );
 
     final response = await http.post(
       uri,

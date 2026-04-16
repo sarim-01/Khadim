@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:khaadim/providers/dine_in_provider.dart';
-import 'package:khaadim/screens/chat/chat_bottom_sheet.dart';
 import 'package:khaadim/screens/discover/custom_deal_screen.dart';
 import 'package:khaadim/screens/dine_in/kiosk_bottom_nav.dart';
 import 'package:khaadim/screens/dine_in/my_table_screen.dart';
 import 'package:khaadim/services/api_config.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
+import 'package:khaadim/widgets/mic_button.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/widgets/voice_order_handler.dart';
 import 'package:provider/provider.dart';
 
 class DineInHomeScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
   String? _topSellersError;
   List<Map<String, dynamic>> _topMenuItems = [];
   List<Map<String, dynamic>> _topDeals = [];
+  late final VoiceOrderHandler _voiceHandler;
 
   static const Map<String, String> _categoryFallbackImages = {
     'bbq': 'assets/images/menu/bbq/chicken_tikka.jpeg',
@@ -33,9 +36,59 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
     'fast_food': 'assets/images/menu/fast_food/cheeseburger.png',
   };
 
+  void _navigateKioskTab(int index) {
+    String route;
+    switch (index) {
+      case 1:
+        route = '/kiosk-menu';
+        break;
+      case 2:
+        route = '/kiosk-deals';
+        break;
+      case 3:
+        route = '/kiosk-table';
+        break;
+      default:
+        route = '/kiosk-home';
+    }
+    Navigator.pushNamed(context, route);
+  }
+
   @override
   void initState() {
     super.initState();
+    _voiceHandler = VoiceOrderHandler();
+    _voiceHandler.init();
+    _voiceHandler.setNavCallbacks(
+      VoiceNavCallbacks(
+        switchTab: _navigateKioskTab,
+        openMenuWithFilter: ({String? cuisine, String? category}) {
+          Navigator.pushNamed(context, '/kiosk-menu');
+        },
+        openCart: () {
+          Navigator.pushNamed(context, '/kiosk-cart');
+        },
+        openCheckout: ({String paymentMethod = 'COD'}) {
+          Navigator.pushNamed(context, '/kiosk-table');
+        },
+        openOrders: () {
+          Navigator.pushNamed(context, '/kiosk-table');
+        },
+        openFavourites: () {
+          Navigator.pushNamed(context, '/kiosk-home');
+        },
+        openRecommendations: () {
+          Navigator.pushNamed(context, '/kiosk-home');
+        },
+        openDealsWithFilter: ({
+          String? cuisineFilter,
+          String? servingFilter,
+          int? highlightDealId,
+        }) {
+          Navigator.pushNamed(context, '/kiosk-deals');
+        },
+      ),
+    );
     _loadTopSellers();
   }
 
@@ -47,20 +100,18 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
 
     try {
       final token = Provider.of<DineInProvider>(context, listen: false).token;
-      final response = await http
-          .get(
-            Uri.parse(
-              '${ApiConfig.baseUrl}/dine-in/top-sellers?ts=${DateTime.now().millisecondsSinceEpoch}',
-            ),
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache',
-              if (token != null && token.isNotEmpty)
-                'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(const Duration(seconds: 8));
+      final response = await http.get(
+        Uri.parse(
+          '${ApiConfig.baseUrl}/dine-in/top-sellers?ts=${DateTime.now().millisecondsSinceEpoch}',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 8));
 
       final dynamic decoded = response.body.isNotEmpty
           ? jsonDecode(response.body)
@@ -101,24 +152,24 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
         rawMenuItems = maybeMenuItems is List
             ? maybeMenuItems
             : rawItems
-                  .where(
-                    (e) =>
-                        e is Map &&
-                        ((e['item_type'] ?? '').toString().toLowerCase() !=
-                            'deal'),
-                  )
-                  .toList();
+                .where(
+                  (e) =>
+                      e is Map &&
+                      ((e['item_type'] ?? '').toString().toLowerCase() !=
+                          'deal'),
+                )
+                .toList();
         final maybeDeals = decoded['top_deals'];
         rawDeals = maybeDeals is List
             ? maybeDeals
             : rawItems
-                  .where(
-                    (e) =>
-                        e is Map &&
-                        ((e['item_type'] ?? '').toString().toLowerCase() ==
-                            'deal'),
-                  )
-                  .toList();
+                .where(
+                  (e) =>
+                      e is Map &&
+                      ((e['item_type'] ?? '').toString().toLowerCase() ==
+                          'deal'),
+                )
+                .toList();
       } else {
         rawItems = <dynamic>[];
         rawMenuItems = <dynamic>[];
@@ -152,6 +203,12 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
 
   Future<void> _handleRefresh() async {
     await _loadTopSellers();
+  }
+
+  @override
+  void dispose() {
+    _voiceHandler.dispose();
+    super.dispose();
   }
 
   void _addTopSellerItem(Map<String, dynamic> item) {
@@ -275,8 +332,7 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
                                       color: theme
-                                          .colorScheme
-                                          .surfaceContainerHighest,
+                                          .colorScheme.surfaceContainerHighest,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
@@ -298,8 +354,7 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
                                               vertical: 10,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: theme
-                                                  .colorScheme
+                                              color: theme.colorScheme
                                                   .surfaceContainerHighest,
                                               borderRadius:
                                                   BorderRadius.circular(10),
@@ -317,8 +372,7 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
                                                   child: Text(
                                                     itemName,
                                                     style: theme
-                                                        .textTheme
-                                                        .bodyMedium,
+                                                        .textTheme.bodyMedium,
                                                   ),
                                                 ),
                                               ],
@@ -382,10 +436,8 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
   }
 
   String _resolveItemType(Map<String, dynamic> item) {
-    final type = (item['item_type'] ?? 'menu_item')
-        .toString()
-        .trim()
-        .toLowerCase();
+    final type =
+        (item['item_type'] ?? 'menu_item').toString().trim().toLowerCase();
     return type == 'deal' ? 'deal' : 'menu_item';
   }
 
@@ -439,9 +491,9 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
     final theme = Theme.of(context);
     final tableNumber =
         Provider.of<DineInProvider>(context).tableNumber?.trim().isNotEmpty ==
-            true
-        ? Provider.of<DineInProvider>(context).tableNumber!.trim()
-        : '--';
+                true
+            ? Provider.of<DineInProvider>(context).tableNumber!.trim()
+            : '--';
 
     return SafeArea(
       child: Scaffold(
@@ -483,32 +535,15 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
           ),
         ),
         bottomNavigationBar: const KioskBottomNav(currentIndex: 0),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: theme.colorScheme.primary,
-          foregroundColor: Colors.black,
-          heroTag: 'kioskVoiceButton',
-          child: const Icon(Icons.mic_none_rounded),
-          onPressed: () {
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (context) {
-                return DraggableScrollableSheet(
-                  initialChildSize: 0.65,
-                  minChildSize: 0.4,
-                  maxChildSize: 0.95,
-                  expand: false,
-                  builder: (_, controller) {
-                    return ChatBottomSheet(
-                      mode: 'voice',
-                      scrollController: controller,
-                    );
-                  },
-                );
-              },
-            );
-          },
+        floatingActionButton: AnimatedBuilder(
+          animation: _voiceHandler,
+          builder: (_, __) => MicButton(
+            isRecording: _voiceHandler.isRecording,
+            isProcessing: _voiceHandler.isProcessing,
+            onPressDown: () => _voiceHandler.onMicDown(context),
+            onPressUp: () => _voiceHandler.onMicUp(context),
+            onCancel: _voiceHandler.onMicCancel,
+          ),
         ),
       ),
     );
@@ -723,9 +758,8 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
               ElevatedButton(
                 onPressed: () => _addTopSellerItem(item),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isDeal
-                      ? Colors.orangeAccent
-                      : theme.colorScheme.primary,
+                  backgroundColor:
+                      isDeal ? Colors.orangeAccent : theme.colorScheme.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   minimumSize: const Size(68, 32),

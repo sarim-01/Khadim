@@ -5,39 +5,26 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.9.2
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # Localization support (required for Urdu keyboard)
   flutter_localizations:
     sdk: flutter
 
-  # Voice recording + playback
   flutter_sound: ^9.2.13
   permission_handler: ^11.0.1
   just_audio: ^0.9.36
-
-  # Text-to-speech
-  flutter_tts: ^3.6.3
-
-  # Networking
-  http: ^1.1.0
-
-  # Audio player (optional)
-  audioplayers: ^6.0.0
-
-  provider: ^6.1.1
-  flutter_secure_storage: ^9.2.2
-
-  # Icons
-  cupertino_icons: ^1.0.8
-
-  # File storage
-  path_provider: ^2.0.15
   flutter_rating_bar: ^4.0.1
+  flutter_tts: ^3.6.3
+  http: ^1.1.0
+  audioplayers: ^6.0.0
+  provider: ^6.1.1
+  cupertino_icons: ^1.0.8
+  path_provider: ^2.0.15
+  flutter_secure_storage: ^9.2.2
   fl_chart: ^1.2.0
 
 dev_dependencies:
@@ -49,23 +36,13 @@ flutter:
   uses-material-design: true
 
   assets:
-    # LOGOS
     - assets/images/khaadim_logo_dark.png
     - assets/images/khaadim_logo_light.png
-
-    # MENU IMAGES
     - assets/images/menu/bbq/
     - assets/images/menu/bread/
     - assets/images/menu/chinese/
     - assets/images/menu/desi/
     - assets/images/menu/drinks/
     - assets/images/menu/fast_food/
-
-    # DEAL IMAGES
-    - assets/images/deals/BBQ deals/
-    - assets/images/deals/Chinese Deals/
-    - assets/images/deals/Desi deals/
-    - assets/images/deals/FastFood deals/
-    - assets/images/deals/custom_deal.png
+    - assets/images/deals/
     - assets/images/confirm.png
-

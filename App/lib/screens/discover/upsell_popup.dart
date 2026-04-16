@@ -6,7 +6,7 @@ import 'package:khaadim/services/cart_service.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 
 class UpsellPopup extends StatefulWidget {
-  const UpsellPopup({Key? key}) : super(key: key);
+  const UpsellPopup({super.key});
 
   @override
   State<UpsellPopup> createState() => _UpsellPopupState();

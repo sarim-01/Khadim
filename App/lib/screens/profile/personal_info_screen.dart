@@ -3,7 +3,7 @@ import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/services/auth_service.dart';
 
 class PersonalInfoScreen extends StatefulWidget {
-  const PersonalInfoScreen({Key? key}) : super(key: key);
+  const PersonalInfoScreen({super.key});
 
   @override
   State<PersonalInfoScreen> createState() => _PersonalInfoScreenState();

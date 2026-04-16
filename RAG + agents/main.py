@@ -4,9 +4,12 @@ import os
 import uuid
 import json
 import time as _time
+import asyncio
+from types import SimpleNamespace
 import redis as redis_lib
 from auth.auth_routes import router as auth_router
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -14,16 +17,20 @@ from typing import Optional, Any
 
 # Voice transcription is optional - will be added later
 try:
-    from voice.transcribe import transcribe_audio
+    from voice.transcribe import transcribe_audio, warmup_transcriber
     VOICE_ENABLED = True
 except Exception as e:
     print(f"[WARNING] Voice transcription disabled: {e}")
     transcribe_audio = None
+    warmup_transcriber = None
     VOICE_ENABLED = False
 
 from chat.chat_agent import get_ai_response
+from voice.urdu_translator import translate_urdu_to_english
 from dotenv import load_dotenv
 from sqlalchemy import text
+import logging
+import re
 
 
 from cart.cart_routes import router as cart_router
@@ -52,6 +59,238 @@ recommendation_engine = RecommendationEngine()
 custom_deal_agent = CustomDealAgent()
 
 print("DB URL = ", os.getenv("DATABASE_URL"))
+logger = logging.getLogger("voice_nlp")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+_SESSION_MEMORY: Dict[str, Dict[str, Any]] = {}
+_HISTORY_WINDOW = 10
+_PEOPLE_WORD_MAP = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "ek": 1, "do": 2, "teen": 3, "chaar": 4, "paanch": 5,
+    "چھ": 6, "سات": 7, "آٹھ": 8, "نو": 9, "دس": 10,
+    "ایک": 1, "دو": 2, "تین": 3, "چار": 4, "پانچ": 5,
+}
+
+def _detect_text_language(text: str, requested_lang: str = "ur") -> str:
+    requested = (requested_lang or "ur").strip().lower()
+    if requested == "en":
+        return "en"
+    urdu_chars = sum(1 for c in text if "\u0600" <= c <= "\u06ff")
+    alpha_chars = sum(1 for c in text if c.isalpha())
+    if urdu_chars > 0 and urdu_chars >= max(1, alpha_chars // 5):
+        return "ur"
+    return "en"
+
+def _extract_keywords_intent(text: str) -> Dict[str, Any]:
+    t = (text or "").lower()
+    cuisine = None
+    if "chinese" in t:
+        cuisine = "chinese"
+    elif "fast food" in t or "burger" in t or "zinger" in t:
+        cuisine = "fast_food"
+    elif "desi" in t or "pakistani" in t:
+        cuisine = "desi"
+    elif "bbq" in t or "barbeque" in t:
+        cuisine = "bbq"
+
+    people = None
+    m = re.search(r"\b([1-9][0-9]?)\s*(people|person|log|afrad)?\b", t)
+    if m:
+        people = int(m.group(1))
+    if people is None:
+        for word, num in _PEOPLE_WORD_MAP.items():
+            if re.search(rf"\b{re.escape(word)}\b", t):
+                people = num
+                break
+
+    if any(k in t for k in ["deal", "deals"]):
+        intent = "search_deal"
+    elif any(k in t for k in ["menu", "item", "dish"]):
+        intent = "search_menu"
+    elif any(k in t for k in ["place order", "confirm order", "checkout"]):
+        intent = "place_order"
+    else:
+        intent = "general_chat"
+
+    return {
+        "intent": intent,
+        "keywords": {
+            "cuisine": cuisine,
+            "people": people,
+            "query_text": text,
+        },
+    }
+
+def _remember_context(session_id: str, nlp: Dict[str, Any], turns_limit: int = _HISTORY_WINDOW) -> Dict[str, Any]:
+    ctx = _SESSION_MEMORY.get(session_id, {"turns": [], "slots": {}})
+    slots = ctx.get("slots", {})
+    kws = (nlp or {}).get("keywords", {})
+    if kws.get("cuisine"):
+        slots["cuisine"] = kws["cuisine"]
+    if kws.get("people"):
+        slots["people"] = kws["people"]
+    if (nlp or {}).get("intent"):
+        slots["last_intent"] = nlp["intent"]
+    ctx["slots"] = slots
+    ctx["turns"].append(nlp)
+    if len(ctx["turns"]) > turns_limit:
+        ctx["turns"] = ctx["turns"][-turns_limit:]
+    _SESSION_MEMORY[session_id] = ctx
+    return ctx
+
+def _is_custom_deal_confirmation(text: str) -> bool:
+    t = (text or "").strip().lower()
+    if re.fullmatch(r"(yes|ok|okay|theek hai|ٹھیک ہے|haan|han|جی|confirm)[.!?]?", t):
+        return True
+    has_custom_phrase = bool(re.search(r"\b(custom deal|create deal|make deal)\b", t))
+    has_affirmation = bool(re.search(r"\b(yes|ok|okay|confirm|haan|han|جی)\b", t))
+    return has_custom_phrase and has_affirmation
+
+def _voice_log(session_id: str, stage: str, **fields: Any) -> None:
+    lines = [f"[VOICE][{stage}] session={session_id}"]
+    for k, v in fields.items():
+        lines.append(f"  {k}: {v}")
+    logger.info("\n".join(lines))
+
+def _filter_deals_by_people(deals: List[Dict[str, Any]], people: Optional[int]) -> List[Dict[str, Any]]:
+    if not people:
+        return deals
+    exact = [d for d in deals if int(d.get("serving_size") or 0) == people]
+    if exact:
+        return exact
+    # fallback: nearest serving size
+    return sorted(deals, key=lambda d: abs(int(d.get("serving_size") or 0) - people))
+
+def _search_deals_from_nlp(nlp: Dict[str, Any], normalized_text: str) -> List[Dict[str, Any]]:
+    kws = (nlp or {}).get("keywords", {})
+    query = kws.get("cuisine") or normalized_text
+    deals = fetch_deals_by_name(query)
+    return _filter_deals_by_people(deals, kws.get("people"))
+
+def _build_deal_tool_calls(nlp: Dict[str, Any]) -> List[Dict[str, Any]]:
+    kws = (nlp or {}).get("keywords", {})
+    args: Dict[str, str] = {}
+    if kws.get("cuisine"):
+        args["cuisine"] = str(kws["cuisine"])
+    if kws.get("people"):
+        args["person_count"] = str(kws["people"])
+    return [{"name": "search_deal", "args": args}]
+
+
+def _clean_item_name(raw: str) -> str:
+    name = re.sub(r"\b(to|into|in|my|the|a|an|cart|please)\b", " ", raw, flags=re.IGNORECASE)
+    name = re.sub(r"\s+", " ", name).strip(" .,!?")
+    if name.endswith(" burgers"):
+        name = name[:-1]
+    return name.title()
+
+
+def _deterministic_chat_tool_calls(text: str, nlp: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    t = (text or "").strip().lower()
+    if not t:
+        return None
+
+    if ("ingredient" in t or "allergen" in t or "allergy" in t) and (" for " in t):
+        query = t.split(" for ", 1)[1].strip()
+        return [{"name": "retrieve_menu_context", "args": {"query": query}}]
+
+    if ("custom deal" in t or "create a custom deal" in t) and not re.search(
+        r"\b(yes|ok|okay|theek hai|ٹھیک ہے|haan|han|جی|confirm)\b", t
+    ):
+        return [{"name": "create_custom_deal", "args": {"query": text}}]
+
+    if nlp.get("intent") == "search_deal":
+        return None
+
+    if "my orders" in t or "go to orders" in t or "open orders" in t:
+        return [{"name": "navigate_to", "args": {"screen": "orders"}}]
+
+    if "open cart" in t or "show cart" in t:
+        return [{"name": "show_cart", "args": {}}]
+
+    m_add = re.search(r"\badd\s+(?:(\d+)\s+)?(.+)$", t)
+    if m_add:
+        qty = int(m_add.group(1)) if m_add.group(1) else 1
+        item = _clean_item_name(m_add.group(2))
+        return [{"name": "add_to_cart", "args": {"item_name": item, "quantity": str(qty)}}]
+
+    m_remove = re.search(r"\bremove\s+(.+)$", t)
+    if m_remove:
+        item = _clean_item_name(m_remove.group(1))
+        return [{"name": "remove_from_cart", "args": {"item_name": item}}]
+
+    m_change = re.search(r"\b(?:change|set)\s+(.+?)\s+(?:quantity\s+)?to\s+(\d+)\b", t)
+    if m_change:
+        item = _clean_item_name(m_change.group(1))
+        qty = m_change.group(2)
+        return [{"name": "change_quantity", "args": {"item_name": item, "quantity": str(qty)}}]
+    m_change_alt = re.search(r"\b(?:change|set)\s+(?:quantity\s+)?(?:of\s+)?(.+?)\s+to\s+(\d+)\b", t)
+    if m_change_alt:
+        item = _clean_item_name(m_change_alt.group(1))
+        qty = m_change_alt.group(2)
+        return [{"name": "change_quantity", "args": {"item_name": item, "quantity": str(qty)}}]
+
+    if ("place" in t and "order" in t) or "checkout" in t:
+        if any(k in t for k in ["card", "credit", "debit"]):
+            pm = "CARD"
+        elif any(k in t for k in ["cash", "cod", "delivery"]):
+            pm = "COD"
+        else:
+            pm = "COD"
+        return [{"name": "place_order", "args": {"payment_method": pm}}]
+
+    if "what should i eat" in t or "recommend" in t or "suggest" in t:
+        return [{"name": "get_recommendations", "args": {}}]
+
+    if "where is my order" in t or "order status" in t or "track my order" in t:
+        return [{"name": "get_order_status", "args": {}}]
+
+    if "favourite" in t or "favorite" in t:
+        return [{"name": "manage_favourites", "args": {"action": "show"}}]
+
+    return None
+
+
+def _deal_no_match_reply(cuisine: Optional[str], people: Optional[int], language: str) -> str:
+    cuisine_txt = cuisine or ("desired cuisine" if language == "en" else "پسندیدہ کھانے")
+    people_txt = str(people) if people else ("your group" if language == "en" else "آپ کے گروپ")
+    if language == "en":
+        return f"I couldn't find an exact deal for {cuisine_txt} for {people_txt}. Would you like a custom deal?"
+    return f"مجھے {cuisine_txt} میں {people_txt} افراد کیلئے بالکل یہی ڈیل نہیں ملی۔ کیا آپ کسٹم ڈیل بنوانا چاہیں گے؟"
+
+
+def _voice_timeout_reply(language: str, stage: str) -> str:
+    if stage == "asr":
+        if language == "en":
+            return "I couldn't process your voice in time. Please speak a shorter sentence and try again."
+        return "میں آپ کی آواز وقت پر پراسیس نہیں کر سکا۔ براہِ کرم چھوٹا جملہ بول کر دوبارہ کوشش کریں۔"
+    if language == "en":
+        return "I’m a bit slow right now, but I understood your request. Please try again once."
+    return "میں ابھی کچھ سست ہوں، مگر آپ کی بات سمجھ گیا ہوں۔ براہِ کرم ایک بار پھر کوشش کریں۔"
+
+
+def _normalize_history_window(raw_history: Any, limit: int = _HISTORY_WINDOW) -> List[Dict[str, str]]:
+    if not isinstance(raw_history, list):
+        return []
+    normalized: List[Dict[str, str]] = []
+    for msg in raw_history:
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role", "")).strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = msg.get("content")
+        if content is None:
+            content = msg.get("text")
+        content_text = str(content or "").strip()
+        if not content_text:
+            continue
+        normalized.append({"role": role, "content": content_text})
+    if limit <= 0:
+        return normalized
+    return normalized[-limit:]
 
 
 # Initialize AI agent
@@ -176,19 +415,15 @@ def warmup_whisper():
         return
     print("Warming up Whisper model...")
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))   # backend/
-        project_root = os.path.dirname(base_dir)                # project root
-        audio_path = os.path.join(project_root, "voice", "empty.wav")
-
-        if not os.path.exists(audio_path):
-            print("Whisper warm-up skipped: empty.wav not found at:", audio_path)
+        if warmup_transcriber is None:
+            print("Whisper warm-up skipped: transcriber unavailable")
             return
 
-        transcribe_audio(audio_path)
+        warmup_transcriber()
         print("Whisper warm-up complete!")
 
     except Exception as e:
-        print("Whisper warm-up failed:", e)
+        print("Whisper warm-up failed:", repr(e))
 
 @app.get("/offers")
 def get_offers():
@@ -293,6 +528,46 @@ def fetch_deals_by_name(name: str):
     return [dict(r) for r in rows]
 
 
+def fetch_deals_for_voice(cuisine: str = "") -> List[Dict[str, Any]]:
+    cuisine = (cuisine or "").strip()
+    query = text("""
+        SELECT
+            d.deal_id,
+            d.deal_name,
+            d.deal_price,
+            d.serving_size,
+            d.image_url,
+            string_agg(
+                di.quantity::text || ' ' || mi.item_name,
+                ', ' ORDER BY mi.item_id
+            ) AS items
+        FROM deal d
+        JOIN deal_item di ON di.deal_id = d.deal_id
+        JOIN menu_item mi ON mi.item_id = di.menu_item_id
+        WHERE
+            :cuisine = ''
+            OR d.deal_name ILIKE :like_cuisine
+            OR mi.item_name ILIKE :like_cuisine
+            OR mi.item_category ILIKE :like_cuisine
+            OR mi.item_cuisine ILIKE :like_cuisine
+        GROUP BY
+            d.deal_id,
+            d.deal_name,
+            d.deal_price,
+            d.serving_size,
+            d.image_url
+        ORDER BY d.deal_id
+        LIMIT 50;
+    """)
+
+    with SQL_ENGINE.connect() as conn:
+        rows = conn.execute(
+            query,
+            {"cuisine": cuisine, "like_cuisine": f"%{cuisine}%"},
+        ).mappings().all()
+    return [dict(r) for r in rows]
+
+
 # ------------------------------
 # TEXT CHAT ENDPOINT
 # ------------------------------
@@ -360,20 +635,97 @@ def format_results_response(menu_items, deals, language: str = "ur") -> str:
 
 class TextChatRequest(BaseModel):
     session_id: Optional[str] = None
-    message: str
-    language: str = "ur"   # "ur" or "en"
+    message: Optional[str] = None
+    text: Optional[str] = None
+    language: Optional[str] = "ur"   # "ur" or "en"
+    lang: Optional[str] = None
 
 
 @app.post("/chat")
+@app.post("/chat/text")
 async def chat_text_endpoint(req: TextChatRequest):
-    user_text = req.message.strip()
+    user_text = (req.message or req.text or "").strip()
+    session_id = (req.session_id or "text-default").strip()
+    language = (req.language or req.lang or "ur").strip().lower()
+    if language not in {"ur", "en"}:
+        language = "ur"
 
     if not user_text:
         return {"success": False, "reply": "پیغام خالی ہے", "raw": {}}
 
+    detected_lang = _detect_text_language(user_text, language)
+    normalized_text = translate_urdu_to_english(user_text) if detected_lang == "ur" else user_text
+    nlp = _extract_keywords_intent(normalized_text)
+    mem = _remember_context(session_id, nlp)
+    logger.info(
+        "[CHAT] session=%s in_lang=%s detected_lang=%s normalized='%s' intent=%s keywords=%s",
+        session_id,
+        language,
+        detected_lang,
+        normalized_text,
+        nlp["intent"],
+        nlp["keywords"],
+    )
+
+    if _is_custom_deal_confirmation(normalized_text):
+        slots = mem.get("slots", {}) if mem else {}
+        if not slots.get("pending_custom_deal") and not (slots.get("cuisine") or slots.get("people")):
+            reply_text = (
+                "Kis cheez ke liye haan keh rahe hain?"
+                if language != "en"
+                else "What would you like me to confirm?"
+            )
+            return {
+                "success": True,
+                "reply": reply_text,
+                "menu_items": [],
+                "deals": [],
+                "tool_calls": [],
+                "nlp": nlp,
+                "memory_slots": slots,
+                "raw": "confirmation-without-context",
+            }
+        cuisine_txt = slots.get("cuisine", "")
+        people_txt = slots.get("people", "")
+        if cuisine_txt and people_txt:
+            custom_query = f"create {cuisine_txt} deal for {people_txt} people"
+        elif cuisine_txt:
+            custom_query = f"create {cuisine_txt} deal"
+        else:
+            custom_query = normalized_text
+        result = custom_deal_agent.create_deal(custom_query)
+        slots["pending_custom_deal"] = False
+        if mem is not None:
+            mem["slots"] = slots
+            _SESSION_MEMORY[session_id] = mem
+        logger.info("[CHAT] session=%s custom_deal_query='%s' result_success=%s", session_id, custom_query, result.get("success"))
+        return {
+            "success": True,
+            "reply": result.get("message", "Custom deal generated."),
+            "menu_items": [],
+            "deals": [result] if result.get("success") else [],
+            "tool_calls": [],
+            "nlp": nlp,
+        "memory_slots": slots,
+        "raw": result,
+    }
+
+    deterministic_calls = _deterministic_chat_tool_calls(normalized_text, nlp)
+    if deterministic_calls:
+        return {
+            "success": True,
+            "reply": "Done.",
+            "menu_items": [],
+            "deals": [],
+            "tool_calls": deterministic_calls,
+            "nlp": nlp,
+            "memory_slots": mem.get("slots", {}) if mem else {},
+            "raw": "deterministic-routing",
+        }
+
     # 1) Let LLM decide TOOL_CALLS (intent + query)
     ai_response = get_ai_response(
-        user_input=user_text,
+        user_input=normalized_text,
         conversation_history=[],
         menu_context=""
     )
@@ -392,22 +744,56 @@ async def chat_text_endpoint(req: TextChatRequest):
             menu_items = fetch_menu_items_by_name(query)
             deals = fetch_deals_by_name(query)
 
+    # Deterministic deal-first path: avoid wrong LLM query opening menu-all view.
+    if nlp["intent"] == "search_deal":
+        deals = _search_deals_from_nlp(nlp, normalized_text)
+        menu_items = []
+        tool_calls = _build_deal_tool_calls(nlp)
+        used_search_tool = True
+
+    # Deterministic fallback: if deal intent but no deals, ask for custom deal using memory slots.
+    if not deals and nlp["intent"] == "search_deal":
+        slots = mem.get("slots", {}) if mem else {}
+        slots["pending_custom_deal"] = True
+        if mem is not None:
+            mem["slots"] = slots
+            _SESSION_MEMORY[session_id] = mem
+        reply_text = _deal_no_match_reply(
+            slots.get("cuisine"),
+            slots.get("people"),
+            language,
+        )
+        return {
+            "success": True,
+            "reply": reply_text,
+            "menu_items": menu_items,
+            "deals": deals,
+            "tool_calls": tool_calls,
+            "nlp": nlp,
+            "memory_slots": slots,
+            "raw": ai_response.content if hasattr(ai_response, "content") else str(ai_response),
+        }
+
     # 3) Decide final reply text
     if used_search_tool:
         # Ignore model free-text and build reply ONLY from DB results
-        reply_text = format_results_response(menu_items, deals, language=req.language)
+        if language == "en":
+            reply_text = format_results_response(menu_items, deals, language="en")
+        else:
+            reply_text = format_items_urdu(menu_items, deals)
     else:
         # No search requested – just use the model's original reply (small talk etc.)
         reply_text = ai_response.content if hasattr(ai_response, "content") else str(ai_response)
 
-    urdu_reply = format_items_urdu(menu_items, deals) if (menu_items or deals) else reply_text
-
     return {
        "success": True,
-       "reply": urdu_reply,
+       "reply": reply_text,
        "menu_items": menu_items,
        "deals": deals,
-       "raw": reply_text
+       "tool_calls": tool_calls,
+       "nlp": nlp,
+       "memory_slots": mem.get("slots", {}) if mem else {},
+       "raw": ai_response.content if hasattr(ai_response, "content") else str(ai_response)
     }
 
 
@@ -419,10 +805,108 @@ async def chat_text_endpoint(req: TextChatRequest):
 # ------------------------------
 # VOICE CHAT ENDPOINT
 # ------------------------------
+@app.get("/voice/deal_check")
+def voice_deal_check(cuisine: str = "", person_count: int = 0):
+    cuisine_norm = (cuisine or "").strip().lower()
+    all_deals = fetch_deals_for_voice(cuisine_norm)
+    available_sizes = sorted(
+        {int(d.get("serving_size") or 0) for d in all_deals if int(d.get("serving_size") or 0) > 0}
+    )
+
+    exact_deals = all_deals
+    if person_count > 0:
+        exact_deals = [d for d in all_deals if int(d.get("serving_size") or 0) == person_count]
+
+    if exact_deals:
+        if person_count > 0:
+            msg_en = f"Great! I found {len(exact_deals)} deal(s) for {person_count} people."
+            msg_ur = f"بہترین! مجھے {person_count} افراد کیلئے {len(exact_deals)} ڈیلز مل گئیں۔"
+        else:
+            msg_en = f"Great! I found {len(exact_deals)} deal(s) for you."
+            msg_ur = f"بہترین! مجھے آپ کیلئے {len(exact_deals)} ڈیلز مل گئیں۔"
+        return {
+            "exists": True,
+            "message": msg_ur,
+            "message_en": msg_en,
+            "deals": exact_deals[:10],
+            "suggest_custom": False,
+            "available_sizes": available_sizes,
+            "custom_query": (
+                f"create {cuisine_norm} deal for {person_count} people"
+                if cuisine_norm and person_count > 0
+                else ""
+            ),
+        }
+
+    # No exact serving-size match, but same-cuisine deals exist.
+    if person_count > 0 and all_deals:
+        closest_distance = min(abs(int(d.get("serving_size") or 0) - person_count) for d in all_deals)
+        closest_deals = [
+            d for d in all_deals if abs(int(d.get("serving_size") or 0) - person_count) == closest_distance
+        ]
+        closest_sizes = sorted({int(d.get("serving_size") or 0) for d in closest_deals if int(d.get("serving_size") or 0) > 0})
+        sizes_txt = ", ".join(str(s) for s in closest_sizes) if closest_sizes else "other sizes"
+
+        msg_en = (
+            f"I couldn't find an exact {person_count}-person deal"
+            + (f" in {cuisine_norm}" if cuisine_norm else "")
+            + f". Closest options serve {sizes_txt}. Would you like one of these or a custom deal?"
+        )
+        msg_ur = (
+            f"مجھے {person_count} افراد کیلئے بالکل یہی ڈیل"
+            + (f" {cuisine_norm} میں" if cuisine_norm else "")
+            + f" نہیں ملی۔ قریب ترین آپشنز {sizes_txt} افراد کیلئے ہیں۔ کیا آپ یہ لیں گے یا کسٹم ڈیل بنوائیں گے؟"
+        )
+
+        return {
+            "exists": False,
+            "message": msg_ur,
+            "message_en": msg_en,
+            "deals": closest_deals[:10],
+            "suggest_custom": True,
+            "available_sizes": available_sizes,
+            "custom_query": f"create {cuisine_norm} deal for {person_count} people" if cuisine_norm else f"create deal for {person_count} people",
+        }
+
+    if person_count > 0:
+        msg_en = (
+            f"I couldn't find an exact {person_count}-person deal"
+            + (f" in {cuisine_norm}." if cuisine_norm else ".")
+            + " Would you like a custom deal?"
+        )
+        msg_ur = (
+            f"مجھے {person_count} افراد کیلئے بالکل یہی ڈیل"
+            + (f" {cuisine_norm} میں" if cuisine_norm else "")
+            + " نہیں ملی۔ کیا آپ کسٹم ڈیل بنوانا چاہیں گے؟"
+        )
+    else:
+        msg_en = "I couldn't find a matching deal. Would you like a custom deal?"
+        msg_ur = "مجھے کوئی میچنگ ڈیل نہیں ملی۔ کیا آپ کسٹم ڈیل بنوانا چاہیں گے؟"
+
+    custom_query = f"create {cuisine_norm} deal for {person_count} people".strip()
+    if not cuisine_norm and person_count > 0:
+        custom_query = f"create deal for {person_count} people"
+    elif cuisine_norm and person_count <= 0:
+        custom_query = f"create {cuisine_norm} deal"
+    elif not cuisine_norm and person_count <= 0:
+        custom_query = "create custom deal"
+
+    return {
+        "exists": False,
+        "message": msg_ur,
+        "message_en": msg_en,
+        "deals": [],
+        "suggest_custom": True,
+        "available_sizes": available_sizes,
+        "custom_query": custom_query,
+    }
+
+
 @app.post("/voice_chat")
 async def chat_voice_endpoint(
     session_id: str = Form(...),
     language: str = Form("ur"),
+    conversation_history: str = Form("[]"),
     file: UploadFile = File(...)
 ):
     if not VOICE_ENABLED:
@@ -432,48 +916,238 @@ async def chat_voice_endpoint(
         )
     os.makedirs("temp_voice", exist_ok=True)
     audio_path = f"temp_voice/{file.filename}"
+    req_start = _time.time()
 
-    with open(audio_path, "wb") as f:
-        f.write(await file.read())
+    try:
+        with open(audio_path, "wb") as f:
+            f.write(await file.read())
+        file_size = os.path.getsize(audio_path)
+        _voice_log(session_id, "upload", filename=file.filename, bytes=file_size, req_lang=language)
 
-    # 1) Transcribe audio
-    transcript = transcribe_audio(audio_path)
+        # Reject clearly unusable recordings early instead of stalling the ASR pipeline.
+        if file_size < 2048:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Audio too short or invalid. Please hold mic longer and try again."},
+            )
 
-    # 2) Get AI tool-call response
-    ai_response = get_ai_response(
-        user_input=transcript,
-        conversation_history=[],
-        menu_context=""
-    )
+        # 1) Transcribe audio
+        try:
+            asr_start = _time.time()
+            language_hint = (language or "ur").strip().lower()
+            if language_hint not in {"ur", "en"}:
+                language_hint = "ur"
+            transcript = await asyncio.wait_for(
+                run_in_threadpool(transcribe_audio, audio_path, language_hint),
+                timeout=60,
+            )
+            _voice_log(session_id, "asr", asr_ms=int((_time.time() - asr_start) * 1000), transcript=transcript)
+        except (asyncio.TimeoutError, TimeoutError):
+            response_language = (language or "ur").strip().lower()
+            if response_language not in {"ur", "en"}:
+                response_language = "ur"
+            reply_text = _voice_timeout_reply(response_language, "asr")
+            _voice_log(session_id, "asr_timeout", timeout_s=60)
+            return {
+                "success": False,
+                "transcript": "",
+                "normalized_text": "",
+                "reply": reply_text,
+                "menu_items": [],
+                "deals": [],
+                "tool_calls": [],
+                "nlp": {"intent": "general_chat", "keywords": {}},
+                "memory_slots": (_SESSION_MEMORY.get(session_id, {}) or {}).get("slots", {}),
+                "raw": {"error": "asr_timeout"},
+            }
+        except Exception:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "Could not process audio format. Please try again."},
+            )
 
-    tool_calls = getattr(ai_response, "tool_calls", [])
+        normalized_lang = _detect_text_language(transcript, language)
+        normalized_text = transcript if normalized_lang == "en" else translate_urdu_to_english(transcript)
+        response_language = (language or "ur").strip().lower()
+        if response_language not in {"ur", "en"}:
+            response_language = normalized_lang
+        nlp = _extract_keywords_intent(normalized_text)
+        mem = _remember_context(session_id, nlp)
+        _voice_log(
+            session_id,
+            "nlp",
+            detected_lang=normalized_lang,
+            normalized=normalized_text,
+            intent=nlp["intent"],
+            keywords=nlp["keywords"],
+        )
 
-    menu_items = []
-    deals = []
-    used_search_tool = False
+        if _is_custom_deal_confirmation(normalized_text):
+            slots = mem.get("slots", {}) if mem else {}
+            if not slots.get("pending_custom_deal") and not (
+                slots.get("cuisine") or slots.get("people")
+            ):
+                reply_text = _voice_timeout_reply(response_language, "llm")
+                if response_language != "en":
+                    reply_text = "کس چیز کے لیے ہاں کہہ رہے ہیں؟"
+                else:
+                    reply_text = "What would you like me to confirm?"
+                return {
+                    "success": True,
+                    "transcript": transcript,
+                    "normalized_text": normalized_text,
+                    "reply": reply_text,
+                    "menu_items": [],
+                    "deals": [],
+                    "tool_calls": [],
+                    "nlp": nlp,
+                    "memory_slots": slots,
+                    "raw": "confirmation-without-context",
+                }
+            cuisine_txt = slots.get("cuisine", "")
+            people_txt = slots.get("people", "")
+            if cuisine_txt and people_txt:
+                custom_query = f"create {cuisine_txt} deal for {people_txt} people"
+            elif cuisine_txt:
+                custom_query = f"create {cuisine_txt} deal"
+            else:
+                custom_query = normalized_text
+            result = custom_deal_agent.create_deal(custom_query)
+            slots["pending_custom_deal"] = False
+            if mem is not None:
+                mem["slots"] = slots
+                _SESSION_MEMORY[session_id] = mem
+            _voice_log(session_id, "custom_deal", query=custom_query, result_success=result.get("success"))
+            return {
+                "success": True,
+                "transcript": transcript,
+                "normalized_text": normalized_text,
+                "reply": result.get("message", "Custom deal generated."),
+                "menu_items": [],
+                "deals": [result] if result.get("success") else [],
+                "tool_calls": [],
+                "nlp": nlp,
+                "memory_slots": slots,
+                "raw": result,
+            }
 
-    # 3) Execute tool calls (search)
-    for call in tool_calls:
-        if call["name"] == "search_menu":
+        # 2) Parse optional conversation history from client
+        try:
+            history_raw = json.loads(conversation_history) if conversation_history else []
+            history = _normalize_history_window(history_raw)
+        except Exception:
+            history = []
+
+        # 3) Get AI tool-call response
+        try:
+            llm_start = _time.time()
+            ai_response = await asyncio.wait_for(
+                run_in_threadpool(
+                    get_ai_response,
+                    normalized_text,
+                    history,
+                    "",
+                ),
+                timeout=120,
+            )
+            _voice_log(
+                session_id,
+                "llm",
+                llm_ms=int((_time.time() - llm_start) * 1000),
+                tool_calls=getattr(ai_response, "tool_calls", []),
+            )
+        except (asyncio.TimeoutError, TimeoutError):
+            _voice_log(session_id, "llm_timeout", timeout_s=120)
+            ai_response = SimpleNamespace(content=_voice_timeout_reply(response_language, "llm"), tool_calls=[])
+        except Exception:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "AI processing failed"},
+            )
+
+        tool_calls = getattr(ai_response, "tool_calls", [])
+
+        menu_items = []
+        deals = []
+        used_search_tool = False
+
+        # 3) Execute tool calls (search)
+        for call in tool_calls:
+            if call["name"] == "search_menu":
+                used_search_tool = True
+                query = call["args"].get("query", "")
+                menu_items = fetch_menu_items_by_name(query)
+                deals = fetch_deals_by_name(query)
+
+        # Deterministic deal-first path: if user asked for deals, do DB deal search from parsed slots.
+        if nlp["intent"] == "search_deal":
+            deals = _search_deals_from_nlp(nlp, normalized_text)
+            menu_items = []
+            tool_calls = _build_deal_tool_calls(nlp)
             used_search_tool = True
-            query = call["args"].get("query", "")
-            menu_items = fetch_menu_items_by_name(query)
-            deals = fetch_deals_by_name(query)
 
-    # 4) Format reply text
-    if used_search_tool:
-        reply_text = format_items_urdu(menu_items, deals)
-    else:
-        reply_text = ai_response.content if hasattr(ai_response, "content") else str(ai_response)
+        # Deterministic fallback: no deal found, continue conversation with memory.
+        if not deals and nlp["intent"] == "search_deal":
+            slots = mem.get("slots", {}) if mem else {}
+            slots["pending_custom_deal"] = True
+            if mem is not None:
+                mem["slots"] = slots
+                _SESSION_MEMORY[session_id] = mem
+            reply_text = _deal_no_match_reply(
+                slots.get("cuisine"),
+                slots.get("people"),
+                response_language,
+            )
+            _voice_log(session_id, "result", total_ms=int((_time.time() - req_start) * 1000), status="fallback-no-deal", deals_found=0)
+            return {
+                "success": True,
+                "transcript": transcript,
+                "normalized_text": normalized_text,
+                "reply": reply_text,
+                "menu_items": menu_items,
+                "deals": deals,
+                "tool_calls": tool_calls,
+                "nlp": nlp,
+                "memory_slots": slots,
+                "raw": ai_response.content if hasattr(ai_response, "content") else str(ai_response),
+            }
 
-    return {
-        "success": True,
-        "transcript": transcript,
-        "reply": reply_text,
-        "menu_items": menu_items,
-        "deals": deals,
-        "raw": reply_text,
-    }
+        # 4) Format reply text
+        if used_search_tool:
+            if response_language == "en":
+                reply_text = format_results_response(menu_items, deals, language="en")
+            else:
+                reply_text = format_items_urdu(menu_items, deals)
+        else:
+            reply_text = ai_response.content if hasattr(ai_response, "content") else str(ai_response)
+
+        _voice_log(
+            session_id,
+            "result",
+            total_ms=int((_time.time() - req_start) * 1000),
+            status="ok",
+            deals_found=len(deals),
+            menu_items_found=len(menu_items),
+        )
+
+        return {
+            "success": True,
+            "transcript": transcript,
+            "normalized_text": normalized_text,
+            "reply": reply_text,
+            "menu_items": menu_items,
+            "deals": deals,
+            "tool_calls": tool_calls,
+            "nlp": nlp,
+            "memory_slots": mem.get("slots", {}) if mem else {},
+            "raw": ai_response.content if hasattr(ai_response, "content") else str(ai_response),
+        }
+    finally:
+        try:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+        except Exception:
+            pass
 
 
 @app.get("/deals")
@@ -858,6 +1532,57 @@ def kitchen_update_task_status(task_id: str, body: KitchenStatusUpdate):
     if body.new_status not in allowed:
         raise HTTPException(status_code=400, detail=f"new_status must be one of {allowed}")
 
+    def _direct_db_fallback(reason: str):
+        row = None
+        with SQL_ENGINE.connect() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT task_id, order_id, status
+                    FROM kitchen_tasks
+                    WHERE task_id = :task_id
+                    """
+                ),
+                {"task_id": task_id},
+            ).mappings().fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Kitchen task not found")
+
+        current_status = (row["status"] or "").upper()
+        allowed_flow = {
+            "QUEUED": {"IN_PROGRESS"},
+            "IN_PROGRESS": {"READY"},
+            "READY": {"COMPLETED"},
+            "COMPLETED": set(),
+        }
+
+        if current_status not in allowed_flow:
+            raise HTTPException(status_code=400, detail=f"Unsupported current task status: {current_status}")
+
+        if body.new_status != current_status and body.new_status not in allowed_flow[current_status]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status transition: {current_status} -> {body.new_status}",
+            )
+
+        from kitchen.kitchen_agent import update_task_status as _direct_update_task_status
+        from kitchen.kitchen_agent import compute_and_sync_order_status as _direct_sync_order_status
+
+        updated = _direct_update_task_status(task_id, body.new_status)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Kitchen task not found")
+
+        _direct_sync_order_status(row["order_id"])
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "new_status": body.new_status,
+            "mode": "direct-db-fallback",
+            "message": reason,
+        }
+
     response_channel = f"resp_{uuid.uuid4().hex}"
     message = {
         "agent": "kitchen",
@@ -866,29 +1591,44 @@ def kitchen_update_task_status(task_id: str, body: KitchenStatusUpdate):
         "response_channel": response_channel,
     }
 
-    pubsub = _REDIS_CLIENT.pubsub()
-    pubsub.subscribe(response_channel)
-    # Drain the subscribe-confirmation message before publishing
-    pubsub.get_message(timeout=0.1)
+    pubsub = None
+    try:
+        pubsub = _REDIS_CLIENT.pubsub()
+        pubsub.subscribe(response_channel)
+        # Drain the subscribe-confirmation message before publishing
+        pubsub.get_message(timeout=0.1)
 
-    _REDIS_CLIENT.publish(AGENT_TASKS_CHANNEL, json.dumps(message))
+        _REDIS_CLIENT.publish(AGENT_TASKS_CHANNEL, json.dumps(message))
 
-    # Poll with get_message() so the timeout is actually enforced
-    deadline = _time.time() + 5
-    result = None
-    while _time.time() < deadline:
-        msg = pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
-        if msg and msg["type"] == "message":
-            result = json.loads(msg["data"])
-            break
-        _time.sleep(0.05)
+        # Poll with get_message() so the timeout is actually enforced
+        deadline = _time.time() + 5
+        result = None
+        while _time.time() < deadline:
+            msg = pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+            if msg and msg["type"] == "message":
+                result = json.loads(msg["data"])
+                break
+            _time.sleep(0.05)
 
-    pubsub.unsubscribe(response_channel)
-    pubsub.close()
+        if result is None:
+            return _direct_db_fallback(
+                "Kitchen agent timeout. Updated task directly in database."
+            )
+        return result
 
-    if result is None:
-        raise HTTPException(status_code=504, detail="Kitchen agent did not respond in time. Is it running?")
-    return result
+    except redis_lib.exceptions.ConnectionError:
+        # Redis is optional for local testing: fall back to direct DB update.
+        return _direct_db_fallback("Redis offline. Updated task directly in database.")
+    finally:
+        if pubsub is not None:
+            try:
+                pubsub.unsubscribe(response_channel)
+            except Exception:
+                pass
+            try:
+                pubsub.close()
+            except Exception:
+                pass
 
 
 @app.get("/orders/{order_id}/tracking")

@@ -42,25 +42,53 @@ class _OffersScreenState extends State<OffersScreen> {
   ];
   static const List<String> _servingFilters = ['All', '1', '2', '3', '4', '5+'];
 
+  static const Map<String, List<String>> _dealImagePoolByCuisine = {
+    'bbq': [
+      'assets/images/deals/BBQ deals/bbq_solo.png',
+      'assets/images/deals/BBQ deals/bbq duo.png',
+      'assets/images/deals/BBQ deals/bbq_squad.png',
+      'assets/images/deals/BBQ deals/bbq_party_A.png',
+      'assets/images/deals/BBQ deals/bbq_party_B.png',
+    ],
+    'chinese': [
+      'assets/images/deals/Chinese Deals/chinese_solo.png',
+      'assets/images/deals/Chinese Deals/chinese_duo.png',
+      'assets/images/deals/Chinese Deals/chinese_squad_A.png',
+      'assets/images/deals/Chinese Deals/Chinese_Squad_B.png',
+      'assets/images/deals/Chinese Deals/chinese_party.png',
+    ],
+    'desi': [
+      'assets/images/deals/Desi deals/desi_solo.png',
+      'assets/images/deals/Desi deals/desi_duo.png',
+      'assets/images/deals/Desi deals/desi_squad_A.png',
+      'assets/images/deals/Desi deals/desi_squad_B.png',
+      'assets/images/deals/Desi deals/desi_party.png',
+    ],
+    'fast_food': [
+      'assets/images/deals/FastFood deals/Fast_solo_A.png',
+      'assets/images/deals/FastFood deals/Fast_solo_B.png',
+      'assets/images/deals/FastFood deals/Fast_Duo.png',
+      'assets/images/deals/FastFood deals/Fast_squad.png',
+      'assets/images/deals/FastFood deals/Fast_food_big_party.png',
+    ],
+  };
+
   List<DealModel> get _filteredDeals {
     return deals.where((d) {
       final q = _searchQuery.toLowerCase();
-      final matchesSearch =
-          q.isEmpty ||
+      final matchesSearch = q.isEmpty ||
           d.dealName.toLowerCase().contains(q) ||
           d.items.toLowerCase().contains(q);
 
-      final matchesCuisine =
-          _selectedCuisine == 'All' ||
+      final matchesCuisine = _selectedCuisine == 'All' ||
           d.dealName.toLowerCase().contains(
-            _selectedCuisine.toLowerCase().replaceAll(' ', ''),
-          ) ||
+                _selectedCuisine.toLowerCase().replaceAll(' ', ''),
+              ) ||
           d.dealName.toLowerCase().startsWith(
-            _selectedCuisine.split(' ').first.toLowerCase(),
-          );
+                _selectedCuisine.split(' ').first.toLowerCase(),
+              );
 
-      final matchesServing =
-          _selectedServing == 'All' ||
+      final matchesServing = _selectedServing == 'All' ||
           (() {
             if (_selectedServing == '5+') return d.servingSize >= 5;
             return d.servingSize == int.tryParse(_selectedServing);
@@ -68,6 +96,88 @@ class _OffersScreenState extends State<OffersScreen> {
 
       return matchesSearch && matchesCuisine && matchesServing;
     }).toList();
+  }
+
+  String _resolveDealImage(DealModel deal) {
+    final raw = deal.imageUrl.trim();
+    if (raw.isNotEmpty) {
+      // Normalize DB-provided local asset paths.
+      final normalized =
+          raw.replaceAll('\\', '/').replaceFirst(RegExp(r'^/+'), '');
+      final lower = normalized.toLowerCase();
+
+      // Ignore known placeholder values from backend and fall back to deal mapping.
+      final isPlaceholder = lower.endsWith('confirm.png') ||
+          lower.contains('/confirm.') ||
+          lower.contains('placeholder');
+
+      if (!isPlaceholder) {
+        if (normalized.startsWith('assets/')) {
+          return normalized;
+        }
+        if (normalized.startsWith('images/')) {
+          return 'assets/$normalized';
+        }
+        if (normalized.startsWith('deals/')) {
+          return 'assets/images/$normalized';
+        }
+      }
+    }
+
+    final mapped = ImageResolver.getDealImage(deal.dealName);
+    if (mapped != ImageResolver.fallbackImage) {
+      return mapped;
+    }
+
+    final cuisine = _inferDealCuisine(deal);
+    if (cuisine != null) {
+      final pool = _dealImagePoolByCuisine[cuisine];
+      if (pool != null && pool.isNotEmpty) {
+        return pool[deal.dealId % pool.length];
+      }
+    }
+
+    return ImageResolver.fallbackImage;
+  }
+
+  String? _inferDealCuisine(DealModel deal) {
+    final hay = '${deal.dealName} ${deal.items}'.toLowerCase();
+
+    if (hay.contains('bbq') ||
+        hay.contains('tikka') ||
+        hay.contains('boti') ||
+        hay.contains('kebab') ||
+        hay.contains('grill')) {
+      return 'bbq';
+    }
+
+    if (hay.contains('chinese') ||
+        hay.contains('manchurian') ||
+        hay.contains('chow') ||
+        hay.contains('szechuan') ||
+        hay.contains('kung pao')) {
+      return 'chinese';
+    }
+
+    if (hay.contains('desi') ||
+        hay.contains('karahi') ||
+        hay.contains('biryani') ||
+        hay.contains('nihari') ||
+        hay.contains('paratha') ||
+        hay.contains('daal')) {
+      return 'desi';
+    }
+
+    if (hay.contains('fast') ||
+        hay.contains('burger') ||
+        hay.contains('fries') ||
+        hay.contains('nugget') ||
+        hay.contains('sandwich') ||
+        hay.contains('zinger')) {
+      return 'fast_food';
+    }
+
+    return null;
   }
 
   /// Map offer category -> banner image
@@ -178,7 +288,7 @@ class _OffersScreenState extends State<OffersScreen> {
                             final offer = offers[index];
                             final bannerImage =
                                 offerBannerImages[offer.category] ??
-                                offerBannerImages["Fast Food"]!;
+                                    offerBannerImages["Fast Food"]!;
 
                             return AnimatedContainer(
                               duration: const Duration(milliseconds: 400),
@@ -255,8 +365,7 @@ class _OffersScreenState extends State<OffersScreen> {
                       ),
                       const SizedBox(height: 12),
                       ...offers.map((offer) {
-                        final img =
-                            offerBannerImages[offer.category] ??
+                        final img = offerBannerImages[offer.category] ??
                             offerBannerImages["Fast Food"]!;
 
                         return Padding(
@@ -387,7 +496,7 @@ class _OffersScreenState extends State<OffersScreen> {
                       )
                     else
                       ..._filteredDeals.map((deal) {
-                        final img = ImageResolver.getDealImage(deal.dealName);
+                        final img = _resolveDealImage(deal);
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: _DealCard(deal: deal, image: img),
@@ -396,9 +505,8 @@ class _OffersScreenState extends State<OffersScreen> {
                   ],
                 ),
               ),
-        bottomNavigationBar: AppConfig.isKiosk
-            ? const KioskBottomNav(currentIndex: 2)
-            : null,
+        bottomNavigationBar:
+            AppConfig.isKiosk ? const KioskBottomNav(currentIndex: 2) : null,
       ),
     );
   }

@@ -3,7 +3,7 @@ import 'package:khaadim/services/token_storage.dart';
 import 'package:khaadim/screens/auth/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -134,7 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onChanged: onChanged,
         title: Text(title),
         secondary: Icon(icon, color: Colors.orangeAccent),
-        activeColor: Colors.orangeAccent,
+        activeThumbColor: Colors.orangeAccent,
       ),
     );
   }

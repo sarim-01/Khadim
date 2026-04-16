@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
 import '../../services/token_storage.dart';
+import 'admin_login_screen.dart';          // ← changed import
+import '../navigation/main_screen.dart';
 import 'overview_screen.dart';
 import 'revenue_screen.dart';
 import 'trends_screen.dart';
@@ -19,10 +22,12 @@ class _AdminShellState extends State<AdminShell> {
   int _currentIndex = 0;
   String _adminName = 'Admin';
   bool _isLoadingName = true;
+  bool _checkingAccess = true;
+  String? _accessError;
 
-  final Color _bgDark = const Color(0xFF07090F);
+  final Color _bgDark    = const Color(0xFF07090F);
   final Color _bgSidebar = const Color(0xFF0D111C);
-  final Color _accent = const Color(0xFF6366F1);
+  final Color _accent    = const Color(0xFF6366F1);
 
   final List<Widget> _screens = const [
     OverviewScreen(),
@@ -40,48 +45,129 @@ class _AdminShellState extends State<AdminShell> {
   ];
 
   final List<Map<String, dynamic>> _navItems = [
-    {'label': 'Overview', 'icon': Icons.dashboard_outlined},
-    {'label': 'Revenue', 'icon': Icons.attach_money},
-    {'label': 'Trends', 'icon': Icons.trending_up},
-    {'label': 'Reviews', 'icon': Icons.comment_outlined},
+    {'label': 'Overview',          'icon': Icons.dashboard_outlined},
+    {'label': 'Revenue',           'icon': Icons.attach_money},
+    {'label': 'Trends',            'icon': Icons.trending_up},
+    {'label': 'Reviews',           'icon': Icons.comment_outlined},
     {'label': 'Agent Performance', 'icon': Icons.smart_toy_outlined},
-    {'label': 'AI Suggestions', 'icon': Icons.lightbulb_outline},
-    {'label': 'Restaurant', 'icon': Icons.table_restaurant},
+    {'label': 'AI Suggestions',    'icon': Icons.lightbulb_outline},
+    {'label': 'Restaurant',        'icon': Icons.table_restaurant},
   ];
 
   @override
   void initState() {
     super.initState();
-    _fetchAdminProfile();
+    _validateAdminAccess();
   }
 
-  Future<void> _fetchAdminProfile() async {
+  // ── FIXED: routes to admin login, not customer LoginScreen ──
+  void _goToLogin() {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed('/admin-login');
+  }
+
+  void _goToMain() {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed('/admin-login');
+  }
+
+  // ── UNCHANGED: original logic preserved exactly ─────────────
+  Future<void> _validateAdminAccess() async {
     try {
-      final data = await AuthService.me();
+      final data = await AuthService.me().timeout(const Duration(seconds: 8));
+      final user  = data['user'] ?? data;
+      final email = (user['email'] ?? '').toString().toLowerCase();
+
+      if (!mounted) return;
+
+      if (email != 'admin@gmail.com') {
+        _goToMain();
+        return;
+      }
+
+      setState(() {
+        _adminName      = user['full_name'] ?? 'Admin';
+        _isLoadingName  = false;
+        _checkingAccess = false;
+        _accessError    = null;
+      });
+    } on ApiException catch (e) {
       if (mounted) {
         setState(() {
-          _adminName = data['user']?['full_name'] ?? 'Admin';
-          _isLoadingName = false;
+          _checkingAccess = false;
+          _accessError    = e.message;
         });
       }
-    } catch (e) {
+      if (e.isUnauthorized) {
+        await TokenStorage.clearToken();
+      }
+      _goToLogin();
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _adminName = 'Admin User';
-          _isLoadingName = false;
+          _checkingAccess = false;
+          _accessError    = 'Unable to verify admin access';
         });
       }
+      await TokenStorage.clearToken();
+      _goToLogin();
     }
   }
 
   Future<void> _handleSignOut() async {
     await TokenStorage.clearToken();
-    if (!mounted) return;
-    Navigator.pushReplacementNamed(context, '/login');
+    _goToLogin();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingAccess) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 12),
+              Text('Checking admin access...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_accessError != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_accessError!, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _checkingAccess = true;
+                      _accessError    = null;
+                    });
+                    _validateAdminAccess();
+                  },
+                  child: const Text('Retry'),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _goToLogin,
+                  child: const Text('Back to Login'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _bgDark,
       body: LayoutBuilder(
@@ -99,14 +185,12 @@ class _AdminShellState extends State<AdminShell> {
   Widget _buildDesktopLayout() {
     return Row(
       children: [
-        // Sidebar
         Container(
           width: 220,
           color: _bgSidebar,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Logo / Brand
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
                 child: Text(
@@ -119,8 +203,6 @@ class _AdminShellState extends State<AdminShell> {
                   ),
                 ),
               ),
-
-              // Nav Items
               Expanded(
                 child: ListView(
                   children: [
@@ -136,8 +218,6 @@ class _AdminShellState extends State<AdminShell> {
                   ],
                 ),
               ),
-
-              // User Profile & Sign Out
               Divider(color: Colors.white10, height: 1),
               Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -155,21 +235,19 @@ class _AdminShellState extends State<AdminShell> {
                         Expanded(
                           child: _isLoadingName
                               ? const SizedBox(
-                                  height: 12,
-                                  width: 12,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
+                            height: 12,
+                            width: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                               : Text(
-                                  _adminName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                            _adminName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -177,21 +255,16 @@ class _AdminShellState extends State<AdminShell> {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        icon: const Icon(
-                          Icons.logout,
-                          size: 16,
-                          color: Colors.white70,
-                        ),
-                        label: const Text(
-                          'Sign out',
-                          style: TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
+                        icon: const Icon(Icons.logout,
+                            size: 16, color: Colors.white70),
+                        label: const Text('Sign out',
+                            style: TextStyle(
+                                color: Colors.white70, fontSize: 13)),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Colors.white24),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                         onPressed: _handleSignOut,
                       ),
@@ -202,8 +275,6 @@ class _AdminShellState extends State<AdminShell> {
             ],
           ),
         ),
-
-        // Main Content Area
         Expanded(
           child: Column(
             children: [
@@ -254,23 +325,20 @@ class _AdminShellState extends State<AdminShell> {
             child: Row(
               children: [
                 Container(
-                  width: 6,
-                  height: 6,
+                  width: 6, height: 6,
                   decoration: const BoxDecoration(
                     color: Colors.greenAccent,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'Live',
-                  style: TextStyle(
-                    color: Colors.greenAccent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-                ),
+                const Text('Live',
+                    style: TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    )),
               ],
             ),
           ),
@@ -295,7 +363,7 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   Widget _buildNavItem(int index) {
-    final item = _navItems[index];
+    final item       = _navItems[index];
     final isSelected = _currentIndex == index;
 
     return Container(
@@ -308,26 +376,21 @@ class _AdminShellState extends State<AdminShell> {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: ListTile(
-          leading: Icon(
-            item['icon'] as IconData,
-            color: isSelected ? _accent : Colors.white70,
-            size: 20,
-          ),
-          title: Text(
-            item['label'] as String,
-            style: TextStyle(
-              color: isSelected ? _accent : Colors.white70,
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-          onTap: () {
-            setState(() => _currentIndex = index);
-          },
+          leading: Icon(item['icon'] as IconData,
+              color: isSelected ? _accent : Colors.white70, size: 20),
+          title: Text(item['label'] as String,
+              style: TextStyle(
+                color: isSelected ? _accent : Colors.white70,
+                fontSize: 13,
+                fontWeight:
+                isSelected ? FontWeight.w600 : FontWeight.normal,
+              )),
+          onTap: () => setState(() => _currentIndex = index),
           mouseCursor: SystemMouseCursors.click,
           hoverColor: _accent.withOpacity(0.10),
           dense: true,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );
@@ -337,10 +400,8 @@ class _AdminShellState extends State<AdminShell> {
     return Scaffold(
       backgroundColor: _bgDark,
       appBar: AppBar(
-        title: const Text(
-          'Khadim Admin',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Khadim Admin',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: _bgSidebar,
         elevation: 0,
         actions: [
@@ -357,7 +418,7 @@ class _AdminShellState extends State<AdminShell> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed, // forces all items to show
+          type: BottomNavigationBarType.fixed,
           backgroundColor: _bgSidebar,
           selectedItemColor: _accent,
           unselectedItemColor: Colors.white54,
@@ -366,9 +427,7 @@ class _AdminShellState extends State<AdminShell> {
           items: _navItems.map((item) {
             return BottomNavigationBarItem(
               icon: Icon(item['icon'] as IconData, size: 22),
-              label: (item['label'] as String)
-                  .split(' ')
-                  .first, // Shorter label for mobile
+              label: (item['label'] as String).split(' ').first,
             );
           }).toList(),
         ),

@@ -322,7 +322,11 @@ def get_dine_in_recommendations(payload: DineInRecommendationsRequest):
 
 @router.post("/table-login")
 def table_login(payload: TableLoginRequest):
-    table_number = payload.table_number.strip()
+    raw_table_number = payload.table_number.strip()
+    table_number = raw_table_number.upper()
+    # Accept both "T1" and "1" style input from kiosk keypad/screens.
+    if table_number and not table_number.startswith("T") and table_number.isdigit():
+        table_number = f"T{table_number}"
     pin = payload.pin.strip()
 
     with SQL_ENGINE.begin() as conn:
@@ -331,7 +335,7 @@ def table_login(payload: TableLoginRequest):
                 """
                 SELECT table_id, table_number, status
                 FROM public.restaurant_tables
-                WHERE table_number = :table_number
+                                WHERE UPPER(table_number) = :table_number
                   AND table_pin = :pin
                 LIMIT 1
                 """
@@ -545,19 +549,27 @@ def create_dine_in_order(payload: DineInOrderRequest):
 
         from websocket_manager import manager
 
+        broadcast_message = {
+            "event": "new_order",
+            "order_id": order_id,
+            "total": total,
+        }
+
         try:
-            asyncio.create_task(
-                manager.broadcast(
-                    room=f"session_{payload.session_id}",
-                    message={"event": "new_order", "order_id": order_id, "total": total},
-                )
-            )
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            # Fallback for worker-thread contexts where no running event loop is available.
+            # Worker-thread context: run broadcast to completion in a fresh loop.
             asyncio.run(
                 manager.broadcast(
                     room=f"session_{payload.session_id}",
-                    message={"event": "new_order", "order_id": order_id, "total": total},
+                    message=broadcast_message,
+                )
+            )
+        else:
+            loop.create_task(
+                manager.broadcast(
+                    room=f"session_{payload.session_id}",
+                    message=broadcast_message,
                 )
             )
 

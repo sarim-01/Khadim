@@ -6,11 +6,15 @@ import 'package:khaadim/services/cart_service.dart';
 import 'package:khaadim/services/payment_service.dart';
 import 'package:khaadim/services/auth_service.dart';
 import 'package:khaadim/screens/payments/payment_method_screen.dart';
-import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/screens/orders/order_confirmation_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
-  const CheckoutScreen({super.key});
+  final String initialPaymentMethod;
+
+  const CheckoutScreen({
+    super.key,
+    this.initialPaymentMethod = 'COD',
+  });
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -32,6 +36,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedPaymentMethod =
+        widget.initialPaymentMethod.toUpperCase().contains('CARD')
+            ? 'CARD'
+            : 'COD';
+    _selectedPaymentLabel =
+        _selectedPaymentMethod == 'CARD' ? 'Card' : 'Cash on Delivery';
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final cart = context.read<CartProvider>();
       if (cart.cartId != null) {
@@ -196,9 +207,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             orderNumber: orderId ?? _generateLocalOrderNumber(),
             totalAmount: finalTotal,
             estimatedPrepTimeMinutes:
-            (res["estimated_prep_time_minutes"] is num)
-                ? (res["estimated_prep_time_minutes"] as num).toInt()
-                : 0,
+                (res["estimated_prep_time_minutes"] is num)
+                    ? (res["estimated_prep_time_minutes"] as num).toInt()
+                    : 0,
             transactionId: transactionId,
           ),
         ),
@@ -261,8 +272,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final theme = Theme.of(context);
     final color = theme.colorScheme;
 
-    return WillPopScope(
-      onWillPop: () async => !_placingOrder,
+    return PopScope(
+      canPop: !_placingOrder,
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         appBar: AppBar(
@@ -309,7 +320,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     _buildSectionCard(
                       context,
                       title: "Payment Method",
@@ -323,7 +333,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: color.primary.withOpacity(0.6),
+                                  color: color.primary.withValues(alpha: 0.6),
                                 ),
                                 borderRadius: BorderRadius.circular(10),
                               ),
@@ -339,7 +349,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           _selectedPaymentLabel,
@@ -373,7 +383,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     _buildSectionCard(
                       context,
                       title: "Order Summary",
@@ -411,7 +420,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -428,23 +436,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         ),
                         child: _placingOrder
                             ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              _statusText,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ],
-                        )
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    _statusText,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ],
+                              )
                             : const Text("Place Order"),
                       ),
                     ),
@@ -459,10 +467,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   static Widget _buildSectionCard(
-      BuildContext context, {
-        required String title,
-        required Widget child,
-      }) {
+    BuildContext context, {
+    required String title,
+    required Widget child,
+  }) {
     final theme = Theme.of(context);
     return Card(
       color: theme.cardColor,
@@ -496,11 +504,11 @@ class _SummaryRow extends StatelessWidget {
   final Color color;
 
   const _SummaryRow(
-      this.label,
-      this.value, {
-        this.isBold = false,
-        this.color = Colors.grey,
-      });
+    this.label,
+    this.value, {
+    this.isBold = false,
+    this.color = Colors.grey,
+  });
 
   @override
   Widget build(BuildContext context) {

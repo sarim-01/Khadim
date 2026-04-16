@@ -33,7 +33,7 @@ class _OverviewScreenState extends State<OverviewScreen>
   int _ordersDaysFilter = 7;
   int _ordersCurrentPage = 0;
   static const int _ordersPerPage = 20;
-  Set<int> _expandedOrderIds = {};
+  final Set<int> _expandedOrderIds = {};
 
   Timer? _pollingTimer;
 

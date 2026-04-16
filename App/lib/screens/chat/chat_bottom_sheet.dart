@@ -27,9 +27,9 @@ class _ChatBottomSheetState extends State<ChatBottomSheet>
   final FlutterTts tts = FlutterTts();
 
   final List<Map<String, dynamic>> _messages = [];
-  final TextEditingController _textController = TextEditingController();
 
   bool _isRecording = false;
+  bool _isSending = false;
   late String _sessionId;
 
   late AnimationController _micController;
@@ -115,48 +115,55 @@ class _ChatBottomSheetState extends State<ChatBottomSheet>
   // SEND VOICE MESSAGE
   // -------------------------------------------------------------
   Future<void> _sendVoice(File file) async {
-    _messages.add({"sender": "user", "text": "Processing voice..."});
-    setState(() {});
+    if (_isSending) return;
+
+    setState(() {
+      _isSending = true;
+      _messages.add({"sender": "user", "text": "Processing voice..."});
+    });
+
     _scrollToBottom();
 
-    final result =
-    await _chatService.sendVoiceMessage(_sessionId, file, "voice", "en");
+    try {
+      final result = await _chatService.sendVoiceMessage(
+        _sessionId,
+        file,
+        "voice",
+        "en",
+      );
 
-    final transcript = result["transcript"] ?? "";
-    final reply = result["reply"] ?? "";
+      final transcript = result["transcript"] ?? "";
+      final reply = result["reply"] ?? "";
 
-    _messages.removeLast();
-    _messages.add({"sender": "user", "text": transcript});
-    _messages.add({"sender": "ai", "text": reply});
+      setState(() {
+        _messages.removeLast();
+        if (transcript.toString().trim().isNotEmpty) {
+          _messages.add({"sender": "user", "text": transcript});
+        }
+        _messages.add({
+          "sender": "ai",
+          "text": reply.toString().trim().isEmpty
+              ? "I could not understand that."
+              : reply
+        });
+      });
 
-    setState(() {});
-    _scrollToBottom();
-
-    await tts.speak(reply);
-  }
-
-  // -------------------------------------------------------------
-  // SEND TEXT MESSAGE
-  // -------------------------------------------------------------
-  Future<void> _sendText() async {
-    final text = _textController.text.trim();
-    if (text.isEmpty) return;
-
-    _messages.add({"sender": "user", "text": text});
-    _textController.clear();
-    setState(() {});
-    _scrollToBottom();
-
-    final result =
-    await _chatService.sendTextMessage(_sessionId, text, "en");
-
-    final reply = result["reply"] ?? "";
-
-    _messages.add({"sender": "ai", "text": reply});
-    setState(() {});
-    _scrollToBottom();
-
-    await tts.speak(reply);
+      _scrollToBottom();
+      await tts.speak(reply.toString());
+    } catch (e) {
+      setState(() {
+        _messages.removeLast();
+        _messages.add({
+          "sender": "ai",
+          "text": "Voice request failed. Please try again."
+        });
+      });
+      _scrollToBottom();
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
   }
 
   // -------------------------------------------------------------
@@ -211,7 +218,7 @@ class _ChatBottomSheetState extends State<ChatBottomSheet>
 
                   return Align(
                     alignment:
-                    isUser ? Alignment.centerRight : Alignment.centerLeft,
+                        isUser ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 6),
                       padding: const EdgeInsets.symmetric(
@@ -242,58 +249,39 @@ class _ChatBottomSheetState extends State<ChatBottomSheet>
             ),
 
             const SizedBox(height: 12),
-
-            // ---------------- Input Box ----------------
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    textDirection: TextDirection.ltr,
-                    decoration: InputDecoration(
-                      hintText: "Type a message...",
-                      filled: true,
-                      fillColor: Colors.grey.shade200,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send, size: 28),
-                  onPressed: _sendText,
-                ),
-              ],
+            Text(
+              _isSending
+                  ? 'Sending...'
+                  : _isRecording
+                      ? 'Recording... tap stop when done'
+                      : 'Tap mic to speak',
+              style: theme.textTheme.bodyMedium,
             ),
-
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // ---------------- Record Button ----------------
             _isRecording
                 ? ElevatedButton.icon(
-              onPressed: _stopRecording,
-              icon: const Icon(Icons.stop),
-              label: const Text("Stop Recording"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                foregroundColor: Colors.white,
-              ),
-            )
+                    onPressed: _isSending ? null : _stopRecording,
+                    icon: const Icon(Icons.stop),
+                    label: const Text("Stop Recording"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                    ),
+                  )
                 : ScaleTransition(
-              scale: _micAnimation,
-              child: ElevatedButton.icon(
-                onPressed: _startRecording,
-                icon: const Icon(Icons.mic),
-                label: const Text("Speak"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: Colors.black,
-                ),
-              ),
-            ),
+                    scale: _micAnimation,
+                    child: ElevatedButton.icon(
+                      onPressed: _isSending ? null : _startRecording,
+                      icon: const Icon(Icons.mic),
+                      label: const Text("Speak"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: Colors.black,
+                      ),
+                    ),
+                  ),
           ],
         ),
       ),

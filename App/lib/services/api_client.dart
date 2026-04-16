@@ -15,10 +15,12 @@ class ApiException implements Exception {
   const ApiException({this.statusCode, required this.message, this.body});
 
   bool get isUnauthorized => statusCode == 401;
-  bool get isTimeout => statusCode == -1 && message.toLowerCase().contains('timeout');
+  bool get isTimeout =>
+      statusCode == -1 && message.toLowerCase().contains('timeout');
 
   @override
-  String toString() => 'ApiException(statusCode: $statusCode, message: $message)';
+  String toString() =>
+      'ApiException(statusCode: $statusCode, message: $message)';
 }
 
 class ApiClient {
@@ -31,12 +33,12 @@ class ApiClient {
   /////// PUBLIC METHODS ///////
 
   static Future<Map<String, dynamic>> getJson(
-      String path, {
-        bool auth = true,
-        Map<String, String>? extraHeaders,
-        Duration? timeout,
-        bool retryOnNetworkError = true, // safe for GET
-      }) async {
+    String path, {
+    bool auth = true,
+    Map<String, String>? extraHeaders,
+    Duration? timeout,
+    bool retryOnNetworkError = true, // safe for GET
+  }) async {
     return _request(
       method: 'GET',
       path: path,
@@ -48,12 +50,12 @@ class ApiClient {
   }
 
   static Future<Map<String, dynamic>> postJson(
-      String path, {
-        required Map<String, dynamic> body,
-        bool auth = true,
-        Map<String, String>? extraHeaders,
-        Duration? timeout,
-      }) async {
+    String path, {
+    required Map<String, dynamic> body,
+    bool auth = true,
+    Map<String, String>? extraHeaders,
+    Duration? timeout,
+  }) async {
     return _request(
       method: 'POST',
       path: path,
@@ -66,12 +68,12 @@ class ApiClient {
   }
 
   static Future<Map<String, dynamic>> putJson(
-      String path, {
-        required Map<String, dynamic> body,
-        bool auth = true,
-        Map<String, String>? extraHeaders,
-        Duration? timeout,
-      }) async {
+    String path, {
+    required Map<String, dynamic> body,
+    bool auth = true,
+    Map<String, String>? extraHeaders,
+    Duration? timeout,
+  }) async {
     return _request(
       method: 'PUT',
       path: path,
@@ -84,12 +86,12 @@ class ApiClient {
   }
 
   static Future<Map<String, dynamic>> patchJson(
-      String path, {
-        required Map<String, dynamic> body,
-        bool auth = true,
-        Map<String, String>? extraHeaders,
-        Duration? timeout,
-      }) async {
+    String path, {
+    required Map<String, dynamic> body,
+    bool auth = true,
+    Map<String, String>? extraHeaders,
+    Duration? timeout,
+  }) async {
     return _request(
       method: 'PATCH',
       path: path,
@@ -102,11 +104,11 @@ class ApiClient {
   }
 
   static Future<Map<String, dynamic>> deleteJson(
-      String path, {
-        bool auth = true,
-        Map<String, String>? extraHeaders,
-        Duration? timeout,
-      }) async {
+    String path, {
+    bool auth = true,
+    Map<String, String>? extraHeaders,
+    Duration? timeout,
+  }) async {
     return _request(
       method: 'DELETE',
       path: path,
@@ -129,7 +131,8 @@ class ApiClient {
     required bool retryOnNetworkError,
   }) async {
     final uri = Uri.parse("$_base$path");
-    final headers = await _buildHeaders(auth: auth, json: true, extra: extraHeaders);
+    final headers =
+        await _buildHeaders(auth: auth, json: true, extra: extraHeaders);
 
     Future<http.Response> doCall() async {
       switch (method) {
@@ -140,7 +143,8 @@ class ApiClient {
         case 'PUT':
           return http.put(uri, headers: headers, body: jsonEncode(body ?? {}));
         case 'PATCH':
-          return http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
+          return http.patch(uri,
+              headers: headers, body: jsonEncode(body ?? {}));
         case 'DELETE':
           return http.delete(uri, headers: headers);
         default:
@@ -170,7 +174,11 @@ class ApiClient {
     } on TimeoutException {
       throw const ApiException(statusCode: -1, message: 'Request timeout');
     } on SocketException {
-      throw const ApiException(statusCode: -2, message: 'No internet connection');
+      throw ApiException(
+        statusCode: -2,
+        message:
+            'Cannot reach backend at ${ApiConfig.baseUrl}. Check backend server and API_BASE_URL.',
+      );
     } on HttpException {
       throw const ApiException(statusCode: -3, message: 'HTTP error');
     } on FormatException {
@@ -180,10 +188,10 @@ class ApiClient {
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException(statusCode: -9, message: 'Unexpected error', body: e.toString());
+      throw ApiException(
+          statusCode: -9, message: 'Unexpected error', body: e.toString());
     }
   }
-
 
   static Future<Map<String, String>> _buildHeaders({
     required bool auth,
@@ -207,7 +215,8 @@ class ApiClient {
 
     if (res.body.isEmpty) {
       if (status >= 200 && status < 300) return {};
-      throw ApiException(statusCode: status, message: 'Request failed', body: null);
+      throw ApiException(
+          statusCode: status, message: 'Request failed', body: null);
     }
 
     dynamic decoded;
@@ -215,7 +224,8 @@ class ApiClient {
       decoded = jsonDecode(res.body);
     } catch (_) {
       if (status >= 200 && status < 300) return {"data": res.body};
-      throw ApiException(statusCode: status, message: 'Request failed', body: res.body);
+      throw ApiException(
+          statusCode: status, message: 'Request failed', body: res.body);
     }
 
     if (status >= 200 && status < 300) {

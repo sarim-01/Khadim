@@ -62,12 +62,12 @@ class _ReviewsScreenState extends State<ReviewsScreen>
       final rawCategories = (data['categories'] as List<dynamic>? ?? []);
       final rawItems = (data['items'] as List<dynamic>? ?? []);
 
-      final categories = [
+      final categories = {
         'all',
         ...rawCategories
             .map((e) => e.toString())
             .where((e) => e.trim().isNotEmpty),
-      ].toSet().toList();
+      }.toList();
 
       final parsed = rawItems
           .map((e) => Map<String, dynamic>.from(e as Map))

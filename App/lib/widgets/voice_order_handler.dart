@@ -1,0 +1,570 @@
+// lib/widgets/voice_order_handler.dart
+// REPLACE existing file entirely.
+//
+// Key changes from original:
+//   1. ConversationMemory added — stores last 10 turns
+//   2. Every API call passes conversationHistory from memory
+//   3. After each transcript, memory.add(user) before executing
+//   4. After each reply, memory.add(assistant)
+//   5. "Yes/ہاں" detection: if last turn was a deal offer and
+//      user says yes → run custom deal flow with stored query
+//   6. _pendingCustomDealQuery stores the query waiting for confirmation
+
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+
+import 'package:khaadim/providers/cart_provider.dart';
+import 'package:khaadim/services/chat_service.dart';
+import 'package:khaadim/services/conversation_memory.dart';
+import 'package:khaadim/services/voice_command_service.dart';
+import 'package:khaadim/services/voice_custom_deal_service.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+
+const MethodChannel _speechChannel =
+    MethodChannel('com.example.khaadim/speech');
+
+// Simple yes/no words in both languages
+const _YES_WORDS = [
+  'yes',
+  'yeah',
+  'yep',
+  'sure',
+  'ok',
+  'okay',
+  'haan',
+  'ha',
+  'ji',
+  'bilkul',
+  'theek',
+  'ہاں',
+  'جی',
+  'بالکل',
+  'ٹھیک',
+];
+const _NO_WORDS = [
+  'no',
+  'nope',
+  'nahi',
+  'nai',
+  'nہیں',
+  'نہیں',
+  'cancel',
+  'kainsal',
+];
+
+class VoiceOrderHandler extends ChangeNotifier {
+  final ChatService _chat = ChatService();
+  late final VoiceCommandService _voiceCmd;
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  final FlutterTts _tts = FlutterTts();
+  late final VoiceCustomDealService _customDeal;
+
+  // ── Conversation memory ───────────────────────────────────
+  final ConversationMemory _memory = ConversationMemory();
+
+  // When VoiceDealService sets suggestCustom=true we store the
+  // pending query here. If user says "yes" next turn, we run it.
+  String? _pendingCustomDealQuery;
+
+  bool _isRecording = false;
+  bool _isProcessing = false;
+  bool _isUrdu = true;
+  bool _recorderReady = false;
+  bool _ttsReady = false;
+
+  String _lastAnnouncedMessage = '';
+  DateTime _lastAnnouncementTime = DateTime.now();
+
+  final String _sessionId = 'session_${DateTime.now().millisecondsSinceEpoch}';
+
+  VoiceNavCallbacks? _nav;
+
+  bool get isRecording => _isRecording;
+  bool get isProcessing => _isProcessing;
+  bool get isUrdu => _isUrdu;
+
+  void setNavCallbacks(VoiceNavCallbacks callbacks) => _nav = callbacks;
+
+  Future<void> init() async {
+    _customDeal = VoiceCustomDealService(_tts);
+    _voiceCmd = VoiceCommandService(tts: _tts);
+    await _initTTS();
+    await _initRecorder();
+  }
+
+  Future<void> _initTTS() async {
+    try {
+      await _tts.setPitch(1.0);
+      await _tts.setSpeechRate(0.45);
+      await _tts.setVolume(1.0);
+      await _applyTTSLang();
+      _tts.setCompletionHandler(() {});
+      _tts.setErrorHandler((msg) {
+        _lastAnnouncedMessage = '';
+      });
+      _ttsReady = true;
+    } catch (_) {}
+  }
+
+  Future<void> _applyTTSLang() async {
+    if (_isUrdu) {
+      final langs = await _tts.getLanguages as List?;
+      final hasUrdu = langs?.any((l) {
+            final s = l.toString().toLowerCase();
+            return s.contains('ur') || s.contains('urdu');
+          }) ??
+          false;
+      await _tts.setLanguage(hasUrdu ? 'ur-PK' : 'en-US');
+    } else {
+      await _tts.setLanguage('en-US');
+    }
+  }
+
+  Future<void> _initRecorder() async {
+    final ok = await Permission.microphone.request();
+    if (!ok.isGranted) return;
+    await _recorder.openRecorder();
+    _recorderReady = true;
+  }
+
+  Future<void> toggleLanguage() async {
+    _isUrdu = !_isUrdu;
+    await _applyTTSLang();
+    notifyListeners();
+  }
+
+  Future<void> onMicDown(BuildContext context) async {
+    if (_isProcessing || _isRecording) return;
+    await _tts.stop();
+    _lastAnnouncedMessage = '';
+    HapticFeedback.mediumImpact();
+    _isUrdu ? await _startWhisper(context) : await _startNativeSTT(context);
+  }
+
+  Future<void> onMicUp(BuildContext context) async {
+    if (!_isRecording) return;
+    HapticFeedback.lightImpact();
+    if (_isUrdu) await _stopWhisper(context);
+  }
+
+  Future<void> onMicCancel() async {
+    if (!_isRecording) return;
+    if (_isUrdu) await _recorder.stopRecorder();
+    _isRecording = false;
+    notifyListeners();
+  }
+
+  // ── Urdu recording ────────────────────────────────────────
+  Future<void> _startWhisper(BuildContext context) async {
+    if (!_recorderReady) {
+      _snackError(context, 'مائیکروفون اجازت نہیں');
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/khaadim_${DateTime.now().millisecondsSinceEpoch}.wav';
+    try {
+      await _recorder.startRecorder(
+        toFile: path,
+        codec: Codec.pcm16WAV,
+        sampleRate: 16000,
+        numChannels: 1,
+      );
+      _isRecording = true;
+      notifyListeners();
+    } catch (_) {
+      _snackError(context, 'مائیکروفون شروع نہیں ہوا');
+    }
+  }
+
+  Future<void> _stopWhisper(BuildContext context) async {
+    final path = await _recorder.stopRecorder();
+    _isRecording = false;
+    notifyListeners();
+    if (path == null) return;
+
+    final file = File(path);
+    if (!await file.exists() || await file.length() < 5000) {
+      if (await file.exists()) await file.delete();
+      _snackError(context, 'بہت چھوٹا — دوبارہ کوشش کریں');
+      return;
+    }
+    await _processUrduAudio(context, file);
+  }
+
+  Future<void> _processUrduAudio(BuildContext context, File file) async {
+    _isProcessing = true;
+    notifyListeners();
+    try {
+      // Pass last 10 turns to backend for context
+      final voiceRes = await _chat.sendVoiceMessage(
+        _sessionId,
+        file,
+        'voice',
+        'ur',
+        conversationHistory: _memory.toApiHistory(),
+      );
+      final transcript = ChatService.extractTranscript(voiceRes);
+
+      if (transcript.isEmpty) {
+        _snackError(context, 'کوئی آواز سنائی نہیں دی');
+        return;
+      }
+
+      // Store user turn BEFORE executing
+      _memory.add(role: 'user', text: transcript);
+      _snackInfo(context, '🎤 $transcript');
+
+      // ── Context-window yes/no detection ──────────────────
+      // If last assistant turn was a deal offer and user says yes/no
+      if (_pendingCustomDealQuery != null) {
+        final lower = transcript.toLowerCase().trim();
+        final isYes = _YES_WORDS.any((w) => lower.contains(w));
+        final isNo = _NO_WORDS.any((w) => lower.contains(w));
+
+        if (isYes) {
+          final query = _pendingCustomDealQuery!;
+          _pendingCustomDealQuery = null;
+          await _runCustomDealFlow(context, query);
+          return;
+        }
+        if (isNo) {
+          _pendingCustomDealQuery = null;
+          final msg = _isUrdu ? 'ٹھیک ہے، کوئی بات نہیں۔' : 'No problem!';
+          _memory.add(role: 'assistant', text: msg);
+          await _speak(msg);
+          return;
+        }
+        // Not yes/no — fall through to normal command processing
+        _pendingCustomDealQuery = null;
+      }
+
+      await _executeFromResponse(context, transcript, voiceRes);
+    } on ChatServiceException {
+      _snackError(context, 'درخواست میں خرابی');
+    } catch (_) {
+      _snackError(context, 'خرابی — دوبارہ کوشش کریں');
+    } finally {
+      if (await file.exists()) await file.delete();
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  // ── English STT ───────────────────────────────────────────
+  Future<void> _startNativeSTT(BuildContext context) async {
+    _isRecording = true;
+    notifyListeners();
+    try {
+      final text = await _speechChannel
+          .invokeMethod<String>('startSpeech', {'locale': 'en-US'});
+      _isRecording = false;
+      notifyListeners();
+      if (text != null && text.trim().isNotEmpty) {
+        _memory.add(role: 'user', text: text.trim());
+        _snackInfo(context, '🎤 $text');
+
+        bool isShortYes(String text) {
+          final t = text.toLowerCase().trim();
+          return t == 'yes' ||
+              t == 'yeah' ||
+              t == 'yep' ||
+              t == 'sure' ||
+              t == 'ok' ||
+              t == 'okay' ||
+              t == 'haan' ||
+              t == 'ha' ||
+              t == 'ji' ||
+              t == 'bilkul' ||
+              t == 'theek' ||
+              t == 'ہاں' ||
+              t == 'جی' ||
+              t == 'بالکل' ||
+              t == 'ٹھیک';
+        }
+
+        bool isShortNo(String text) {
+          final t = text.toLowerCase().trim();
+          return t == 'no' ||
+              t == 'nope' ||
+              t == 'nahi' ||
+              t == 'nai' ||
+              t == 'نہیں' ||
+              t == 'cancel' ||
+              t == 'kainsal';
+        }
+
+        // Context-window yes/no detection (English path)
+        if (_pendingCustomDealQuery != null) {
+          final lower = text.toLowerCase().trim();
+          final isYes = _YES_WORDS.any((w) => lower.contains(w));
+          final isNo = _NO_WORDS.any((w) => lower.contains(w));
+
+          if (isYes) {
+            final query = _pendingCustomDealQuery!;
+            _pendingCustomDealQuery = null;
+            await _runCustomDealFlow(context, query);
+            return;
+          }
+          if (isNo) {
+            _pendingCustomDealQuery = null;
+            final msg = 'No problem!';
+            _memory.add(role: 'assistant', text: msg);
+            await _speak(msg);
+            return;
+          }
+          _pendingCustomDealQuery = null;
+        }
+
+        await _runCommand(context, text.trim());
+      } else {
+        _snackError(context, 'Nothing heard');
+      }
+    } on PlatformException catch (e) {
+      _isRecording = false;
+      notifyListeners();
+      _snackError(context, e.message ?? 'Speech failed');
+    } catch (_) {
+      _isRecording = false;
+      notifyListeners();
+      _snackError(context, 'Speech failed');
+    }
+  }
+
+  // ── Execute helpers ───────────────────────────────────────
+  Future<void> _executeFromResponse(
+    BuildContext context,
+    String transcript,
+    Map<String, dynamic> voiceRes,
+  ) async {
+    _isProcessing = true;
+    notifyListeners();
+    try {
+      final result = await _voiceCmd.executeFromResponse(
+        transcript: transcript,
+        response: voiceRes,
+        context: context,
+        sessionId: _sessionId,
+        language: 'ur',
+        nav: _nav,
+        memory: _memory,
+      );
+      await _handleResult(context, result, originalTranscript: transcript);
+    } catch (_) {
+      _snackError(context, 'خرابی — دوبارہ کوشش کریں');
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _runCommand(BuildContext context, String transcript) async {
+    _isProcessing = true;
+    notifyListeners();
+    try {
+      final result = await _voiceCmd.execute(
+        transcript: transcript,
+        context: context,
+        sessionId: _sessionId,
+        language: 'en',
+        nav: _nav,
+        memory: _memory,
+      );
+      await _handleResult(context, result, originalTranscript: transcript);
+    } catch (_) {
+      _snackError(context, 'Error — try again');
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _handleResult(
+    BuildContext context,
+    VoiceCommandResult result, {
+    String originalTranscript = '',
+  }) async {
+    if (!result.success) {
+      _snackError(context, _isUrdu ? 'درخواست میں خرابی' : 'Request error');
+      return;
+    }
+
+    // Save assistant reply to memory
+    if (result.reply.isNotEmpty) {
+      _memory.add(role: 'assistant', text: result.reply);
+    }
+
+    final action = result.actionTaken;
+
+    if (result.navigated) return;
+
+    if (action == 'custom_deal') {
+      await _runCustomDealFlow(
+          context,
+          originalTranscript.isNotEmpty
+              ? originalTranscript
+              : result.transcript);
+      return;
+    }
+
+    // Deal search returned suggest_custom — store for next turn
+    if (action == 'deal_suggest_custom') {
+      _pendingCustomDealQuery = result.transcript;
+      await _speak(result.reply);
+      return;
+    }
+
+    if (action == 'order_status') {
+      await _speak(result.reply);
+      return;
+    }
+    if (action == 'menu_inquiry') {
+      await _speak(result.reply);
+      return;
+    }
+
+    if (action == 'added_to_cart') {
+      await _speak(result.reply);
+      await _checkUpsell(context);
+      return;
+    }
+
+    if (action == 'removed_from_cart' || action == 'quantity_changed') {
+      await _speak(result.reply);
+      return;
+    }
+
+    if (action == 'item_not_found') {
+      _snackError(context, _isUrdu ? 'آئٹم نہیں ملا' : 'Item not found');
+      return;
+    }
+
+    if (action.startsWith('favourites_')) {
+      await _speak(result.reply);
+      return;
+    }
+
+    if (result.reply.isNotEmpty) await _speak(result.reply);
+  }
+
+  // ── Custom deal flow ──────────────────────────────────────
+  Future<void> _runCustomDealFlow(
+      BuildContext context, String userQuery) async {
+    if (userQuery.isEmpty) {
+      final q = _isUrdu ? 'کس طرح کی ڈیل چاہیے؟' : 'What kind of deal?';
+      _memory.add(role: 'assistant', text: q);
+      await _speak(q);
+      return;
+    }
+    _isProcessing = true;
+    notifyListeners();
+    try {
+      final result = await _customDeal.createDeal(
+        userQuery: userQuery,
+        context: context,
+        language: _isUrdu ? 'ur' : 'en',
+      );
+      if (result.needsClarification) {
+        if (result.clarificationQuestion.isNotEmpty) {
+          _memory.add(role: 'assistant', text: result.clarificationQuestion);
+          // Store pending query so next "yes" triggers the deal
+          _pendingCustomDealQuery = userQuery;
+        }
+        if (context.mounted) {
+          _snackInfo(context,
+              _isUrdu ? 'جواب دیں اور دوبارہ بولیں' : 'Answer and speak again');
+        }
+        return;
+      }
+      if (result.addedToCart) {
+        final msg =
+            _isUrdu ? 'ڈیل کارٹ میں شامل ہو گئی ✓' : 'Deal added to cart ✓';
+        _memory.add(role: 'assistant', text: msg);
+        if (context.mounted) {
+          _snackInfo(context, msg);
+          Provider.of<CartProvider>(context, listen: false).sync();
+        }
+      } else if (result.error.isNotEmpty) {
+        if (context.mounted) _snackError(context, result.error);
+      }
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  // ── Upsell ────────────────────────────────────────────────
+  Future<void> _checkUpsell(BuildContext context) async {
+    if (!context.mounted) return;
+    try {
+      final cart = Provider.of<CartProvider>(context, listen: false);
+      final cartNames = cart.items.map((i) => i.name ?? '').toList();
+      if (cartNames.isEmpty) return;
+      final sugg = await _chat.getUpsellSuggestion(
+        lastItemName: cartNames.last,
+        cartItems: cartNames,
+      );
+      if (sugg != null && sugg['success'] == true) {
+        final msg = _isUrdu
+            ? (sugg['suggestion_ur'] as String? ?? '')
+            : (sugg['suggestion_en'] as String? ?? '');
+        if (msg.isNotEmpty) {
+          await Future.delayed(const Duration(milliseconds: 800));
+          _memory.add(role: 'assistant', text: msg);
+          await _speak(msg);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // ── TTS ───────────────────────────────────────────────────
+  Future<void> _speak(String text) async {
+    if (!_ttsReady || text.isEmpty) return;
+    final now = DateTime.now();
+    if (text == _lastAnnouncedMessage &&
+        now.difference(_lastAnnouncementTime).inSeconds < 10) {
+      return;
+    }
+    await _tts.stop();
+    await _tts.speak(text);
+    _lastAnnouncedMessage = text;
+    _lastAnnouncementTime = now;
+  }
+
+  void _snackInfo(BuildContext context, String msg) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg, maxLines: 1, overflow: TextOverflow.ellipsis),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
+  void _snackError(BuildContext context, String msg) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg, maxLines: 1, overflow: TextOverflow.ellipsis),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.redAccent,
+      ));
+  }
+
+  @override
+  void dispose() {
+    _recorder.closeRecorder();
+    _tts.stop();
+    super.dispose();
+  }
+}

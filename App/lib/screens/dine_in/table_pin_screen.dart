@@ -190,8 +190,8 @@ class _TablePinScreenState extends State<TablePinScreen> {
                               if (pin.isEmpty) {
                                 return 'Please enter your PIN';
                               }
-                              if (pin.length != 6) {
-                                return 'PIN must be 6 digits';
+                              if (pin.length != 4) {
+                                return 'PIN must be 4 digits';
                               }
                               return null;
                             },

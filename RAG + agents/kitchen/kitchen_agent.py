@@ -103,7 +103,12 @@ KITCHEN_TO_ORDER_STATUS = {
 }
 
 # Lower rank = earlier stage (worst/slowest task wins)
-_STATUS_RANK = {"QUEUED": 0, "IN_PROGRESS": 1, "READY": 2}
+_STATUS_RANK = {
+    "QUEUED": 0,
+    "IN_PROGRESS": 1,
+    "READY": 2,
+    "COMPLETED": 3,
+}
 
 
 def sync_order_status(order_id, kitchen_status, estimated_minutes=None):
@@ -134,7 +139,8 @@ def compute_and_sync_order_status(order_id):
     only when every task has reached that level.
       - Any task still QUEUED       → in_kitchen  (hold)
       - All IN_PROGRESS or better   → preparing   (remaining time = max of IN_PROGRESS tasks)
-      - All READY                   → ready        (time = 0)
+    - All READY                   → ready        (time = 0)
+    - All COMPLETED               → completed    (time = 0)
       - No tasks left               → completed    (time = 0)
     """
     db = get_db_instance()
@@ -163,9 +169,12 @@ def compute_and_sync_order_status(order_id):
         in_progress_times = [t["estimated_minutes"] for t in tasks if t["status"] == "IN_PROGRESS"]
         remaining = max(in_progress_times) if in_progress_times else 0
         sync_order_status(order_id, "IN_PROGRESS", remaining)
-    else:
-        # All tasks are READY
+    elif worst == "READY":
+        # All tasks are READY or COMPLETED
         sync_order_status(order_id, "READY", 0)
+    else:
+        # All tasks are COMPLETED
+        sync_order_status(order_id, "COMPLETED", 0)
 
 # =========================================================
 #   DB FETCH HELPERS

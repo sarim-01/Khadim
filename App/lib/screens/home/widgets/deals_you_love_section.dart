@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:khaadim/models/recommendation_result.dart';
-import 'package:khaadim/services/personalization_service.dart';
 import 'package:khaadim/services/cart_service.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
@@ -10,7 +9,7 @@ import 'package:provider/provider.dart';
 
 class DealsYouLoveSection extends StatefulWidget {
   final Future<RecommendationResult> future;
-  const DealsYouLoveSection({Key? key, required this.future}) : super(key: key);
+  const DealsYouLoveSection({super.key, required this.future});
 
   @override
   State<DealsYouLoveSection> createState() => _DealsYouLoveSectionState();
@@ -43,6 +42,7 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
 
   Future<void> _addDeal(RecommendedDeal deal) async {
     final cartId = context.read<CartProvider>().cartId;
+    final cartProvider = context.read<CartProvider>();
     if (cartId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -60,16 +60,15 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
         itemId: deal.dealId,
         quantity: 1,
       );
-      await context.read<CartProvider>().sync();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${deal.dealName} added!'),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      }
+      await cartProvider.sync();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${deal.dealName} added!'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 1),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -277,7 +276,8 @@ class _DealsYouLoveSectionState extends State<DealsYouLoveSection>
                               : const Text(
                                   '+ Add',
                                   style: TextStyle(
-                                      fontSize: 11, fontWeight: FontWeight.w600),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600),
                                 ),
                         ),
                       ),
