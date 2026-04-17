@@ -34,6 +34,15 @@ numpy
 requests
 email-validator
 
+# Missing System Dependencies from teammates
+pandas
+transformers
+sentence-transformers
+
+# Testing
+pytest
+httpx
+
 # NOTE: ffmpeg must also be installed separately on your system (not on venv)
 # Windows: winget install ffmpeg
 # Verify: ffmpeg -version

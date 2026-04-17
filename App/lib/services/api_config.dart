@@ -18,6 +18,6 @@ class ApiConfig {
     // Mobile default: physical devices should use host PC LAN IP.
     // For Android emulator, run with:
     // --dart-define=API_BASE_URL=http://10.0.2.2:8000
-    return 'http://192.168.18.10:8000';
+    return 'http://192.168.100.30:8000';
   }
 }
