@@ -754,6 +754,12 @@ class VoiceOrderHandler extends ChangeNotifier {
     }
     _isSpeaking = true;
 
+    // FREE UP THE MIC: stop the processing spinner so the user can interrupt the voice!
+    if (_isProcessing) {
+      _isProcessing = false;
+      notifyListeners();
+    }
+
     try {
       final playedByGtts = await _speakWithBackendGtts(clean, language: language);
       if (!playedByGtts) {

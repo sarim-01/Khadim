@@ -613,11 +613,12 @@ def _canonicalize_menu_item_name(raw_name: str, *, voice_strict: bool = False) -
                 return ""
         return shortlist[0]
 
-    # Optional LLM disambiguation constrained to shortlist only.
-    if not voice_strict:
-        llm_match = _llm_resolve_menu_item_name(cleaned, shortlist)
-        if llm_match:
-            return llm_match
+    # LLM disambiguation (full menu) when fuzzy match fails.
+    # Passed all_names because an Urdu transliteration (e.g. "چاومین") will have
+    # 0.0 fuzzy similarity with "Chowmein" and might not make the top-30 shortlist.
+    llm_match = _llm_resolve_menu_item_name(cleaned, all_names)
+    if llm_match:
+        return llm_match
 
     return "" if voice_strict else cleaned
 
@@ -708,6 +709,11 @@ def _canonicalize_deal_name(raw_name: str, *, voice_strict: bool = False) -> str
                 return ""
         return shortlist[0]
 
+    # LLM disambiguation (full deal catalog) when fuzzy match fails.
+    llm_match = _llm_resolve_menu_item_name(cleaned, all_deal_names)
+    if llm_match:
+        return llm_match
+
     return "" if voice_strict else cleaned
 
 
@@ -785,7 +791,7 @@ def _split_add_item_chunks(raw: str) -> List[str]:
         text_value = text_value.replace(src, dst)
 
     text_value = text_value.replace(" & ", " and ").replace(" plus ", " and ")
-    text_value = re.sub(r"\s*,\s*", " and ", text_value)
+    text_value = re.sub(r"\s*[,،]\s*", " and ", text_value)
 
     chunks = [
         c.strip().replace("__and__", " and ")
@@ -837,7 +843,7 @@ _URDU_ITEM_WORD_MAP: Dict[str, str] = {
     # Fast food
     "برگر": "burger", "زنگر": "zinger", "پیزا": "pizza",
     "فرائز": "fries", "نگٹس": "nuggets", "رول": "roll",
-    "سینڈوچ": "sandwich", "ریپ": "wrap",
+    "سینڈوچ": "sandwich", "کلب": "club", "ریپ": "wrap",
     # Drinks
     "ڈیو": "dew", "کولا": "cola", "پیپسی": "pepsi",
     "اسپرائٹ": "sprite", "سپرائٹ": "sprite",
@@ -897,6 +903,11 @@ def _extract_urdu_add_to_cart(
 ) -> List[Dict[str, Any]]:
     """Detect add-to-cart commands from raw Urdu before translation corrupts them.
 
+    Supports MULTI-ITEM utterances separated by Urdu comma (،), regular
+    comma, or اور / and.  Example:
+        "تین کولا، ایک چکن کلب سینڈوچ اور دو زنگر برگر کارٹ میں ڈال دو"
+        → 3× Cola, 1× Chicken Club Sandwich, 2× Zinger Burger
+
     Returns resolved add_to_cart tool-call dicts or [] on no match.
     """
     t = (raw_transcript or "").strip()
@@ -912,29 +923,46 @@ def _extract_urdu_add_to_cart(
     if not item_phrase_ur:
         return []
 
-    # Strip leading Urdu quantity word.
-    qty = 1
-    qty_m = re.match(r"^(ایک|دو|تین|چار|پانچ|\d+)\s+(.+)$", item_phrase_ur)
-    if qty_m:
-        qty_tok = qty_m.group(1)
-        qty = _URDU_QTY_WORDS.get(qty_tok, int(qty_tok) if qty_tok.isdigit() else 1)
-        item_phrase_ur = qty_m.group(2).strip()
+    # ── Split on Urdu comma (،), regular comma, and اور / and ───────────
+    chunks = re.split(r"\s*[،,]\s*|\s+اور\s+|\s+and\s+", item_phrase_ur)
+    chunks = [c.strip() for c in chunks if c and c.strip()]
+    if not chunks:
+        return []
 
-    translated = _translate_urdu_item_phrase(item_phrase_ur)
+    calls: List[Dict[str, Any]] = []
 
-    for candidate in [translated, item_phrase_ur]:
-        if not candidate:
-            continue
-        resolved = _resolve_cart_item_name(candidate, voice_strict=voice_strict)
+    for chunk in chunks:
+        # Strip leading Urdu/digit quantity from this chunk.
+        qty = 1
+        qty_m = re.match(
+            r"^(ایک|دو|تین|چار|پانچ|چھ|سات|آٹھ|نو|دس|\d+)\s+(.+)$", chunk
+        )
+        if qty_m:
+            qty_tok = qty_m.group(1)
+            qty = _URDU_QTY_WORDS.get(
+                qty_tok, int(qty_tok) if qty_tok.isdigit() else 1
+            )
+            chunk = qty_m.group(2).strip()
+
+        translated = _translate_urdu_item_phrase(chunk)
+
+        resolved: Optional[str] = None
+        for candidate in [translated, chunk]:
+            if not candidate:
+                continue
+            resolved = _resolve_cart_item_name(candidate, voice_strict=voice_strict)
+            if resolved:
+                break
+
         if resolved:
             resolved_id, resolved_type = _lookup_resolved_item_id(resolved)
             args: Dict[str, str] = {"item_name": resolved, "quantity": str(qty)}
             if resolved_id is not None and resolved_type:
                 args["item_id"] = str(resolved_id)
                 args["item_type"] = resolved_type
-            return [{"name": "add_to_cart", "args": args}]
+            calls.append({"name": "add_to_cart", "args": args})
 
-    return []
+    return calls
 
 
 def _detect_urdu_add_to_cart_intent(raw_transcript: str) -> bool:
@@ -1305,6 +1333,16 @@ def _deterministic_chat_tool_calls(
         item = _resolve_cart_item_name(remove_phrase, voice_strict=voice_strict)
         if item:
             return [{"name": "remove_from_cart", "args": {"item_name": item}}]
+
+    # Urdu word order but translated (e.g. "3 cola cart mein add karo")
+    m_add_ur = re.search(r"^(.+?)\s+(?:cart\s+mein|cart\s+me|cart\s+mai|order\s+mein|cart)\s*(?:mein\s+)?add\s*(?:karo|kar\s*do|krdo|karein)?\s*$", t)
+    if m_add_ur:
+        calls = _build_add_to_cart_calls(
+            m_add_ur.group(1),
+            voice_strict=voice_strict,
+        )
+        if calls:
+            return calls
 
     m_add = re.search(r"\badd\s+(?:(\d+)\s+)?(.+)$", t)
     if m_add:
