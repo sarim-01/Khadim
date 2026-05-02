@@ -590,16 +590,19 @@ class VoiceCommandService {
             lastAction = 'recommendations';
             continue;
           }
-          nav?.openRecommendations();
-          navigated = true;
-          lastAction = 'recommendations';
-          if (effectiveReply.trim().isEmpty) {
+          final recommendationReply = await ChatService().getVoiceRecommendations(language: language);
+          if (recommendationReply.isNotEmpty) {
+            effectiveReply = recommendationReply;
+          } else if (effectiveReply.trim().isEmpty) {
             effectiveReply = _localized(
               language,
               urdu: 'سفارشات دکھا رہا ہوں۔',
               english: 'Opening recommendations.',
             );
           }
+          nav?.openRecommendations();
+          navigated = true;
+          lastAction = 'recommendations';
           break;
 
         case 'create_custom_deal':

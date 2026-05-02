@@ -138,34 +138,54 @@ class ChatService {
   Future<String> getVoiceRecommendations({String language = 'en'}) async {
     try {
       final res = await ApiClient.getJson(
-        '/recommendations',
+        '/personalization/recommendations',
         auth: true,
         timeout: ApiClient.defaultTimeout,
       );
 
       final items = (res['recommended_items'] as List? ?? []).cast<dynamic>();
-      if (items.isEmpty) {
+      final deals = (res['recommended_deals'] as List? ?? []).cast<dynamic>();
+
+      if (items.isEmpty && deals.isEmpty) {
         return language == 'ur'
             ? 'ابھی کوئی خاص سفارش دستیاب نہیں۔'
             : 'No recommendations available right now.';
       }
 
-      final names = items
-          .take(3)
-          .map(
-              (e) => (e as Map<String, dynamic>)['item_name']?.toString() ?? '')
-          .where((n) => n.isNotEmpty)
-          .toList();
+      final parts = <String>[];
 
-      if (names.isEmpty) {
+      // Top 2 menu items with reasons
+      for (final e in items.take(2)) {
+        final map = e as Map<String, dynamic>;
+        final name = map['item_name']?.toString() ?? '';
+        final reason = map['reason']?.toString() ?? '';
+        final reasonUr = map['reason_ur']?.toString() ?? reason;
+        if (name.isEmpty) continue;
+        parts.add(language == 'ur' ? '$name (کیونکہ $reasonUr)' : '$name ($reason)');
+      }
+
+      // Top 1 deal with reason
+      if (deals.isNotEmpty) {
+        final d = deals.first as Map<String, dynamic>;
+        final name = d['deal_name']?.toString() ?? '';
+        final reason = d['reason']?.toString() ?? '';
+        final reasonUr = d['reason_ur']?.toString() ?? reason;
+        if (name.isNotEmpty) {
+          parts.add(language == 'ur'
+              ? 'اور ڈیل: $name (کیونکہ $reasonUr)'
+              : 'and deal: $name ($reason)');
+        }
+      }
+
+      if (parts.isEmpty) {
         return language == 'ur'
             ? 'سفارشات دستیاب ہیں، براہِ کرم ہوم اسکرین دیکھیں۔'
             : 'Recommendations are ready on your home screen.';
       }
 
       return language == 'ur'
-          ? 'آپ کے لیے سفارشات: ${names.join('، ')}'
-          : 'Recommended for you: ${names.join(', ')}';
+          ? 'آپ کے لیے سفارشات: ${parts.join('، ')}'
+          : 'Recommended for you: ${parts.join(', ')}';
     } catch (_) {
       return language == 'ur'
           ? 'سفارشات حاصل نہیں ہو سکیں۔'

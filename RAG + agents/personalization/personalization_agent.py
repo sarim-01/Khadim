@@ -211,10 +211,10 @@ HARD RULE: Never include any item whose item_id is in this disliked list: {disli
 Output MUST be valid JSON with this EXACT structure (no markdown, no extra text):
 {{
   "recommended_items": [
-    {{"item_id": <int>, "item_name": "<string>", "score": <0-100>, "reason": "<string>"}}
+    {{"item_id": <int>, "item_name": "<string>", "score": <0-100>, "reason": "<string>", "reason_ur": "<urdu translation of reason>"}}
   ],
   "recommended_deals": [
-    {{"deal_id": <int>, "deal_name": "<string>", "score": <0-100>, "reason": "<string>"}}
+    {{"deal_id": <int>, "deal_name": "<string>", "score": <0-100>, "reason": "<string>", "reason_ur": "<urdu translation of reason>"}}
   ]
 }}"""
 
