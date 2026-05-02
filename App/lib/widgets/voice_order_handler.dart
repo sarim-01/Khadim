@@ -10,6 +10,7 @@
 //      user says yes → run custom deal flow with stored query
 //   6. _pendingCustomDealQuery stores the query waiting for confirmation
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -27,8 +28,10 @@ import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/services/api_config.dart';
 import 'package:khaadim/services/chat_service.dart';
 import 'package:khaadim/services/conversation_memory.dart';
+import 'package:khaadim/services/order_service.dart';
 import 'package:khaadim/services/voice_command_service.dart';
 import 'package:khaadim/services/voice_custom_deal_service.dart';
+import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/widgets/voice_nav_callbacks.dart';
 
 const MethodChannel _speechChannel =
@@ -99,6 +102,20 @@ class VoiceOrderHandler extends ChangeNotifier {
   bool get isUrdu => _isUrdu;
 
   void setNavCallbacks(VoiceNavCallbacks callbacks) => _nav = callbacks;
+
+  /// Optional interceptor for checkout-specific voice commands.
+  /// Called with the raw transcript before the generic voice pipeline.
+  /// If it returns true the generic pipeline is skipped entirely.
+  bool Function(String transcript)? _checkoutInterceptor;
+  void setCheckoutInterceptor(bool Function(String transcript) fn) {
+    _checkoutInterceptor = fn;
+  }
+
+  /// Speaks [text] immediately using the backend gTTS pipeline (same as
+  /// the rest of the app). [lang] should be 'ur' or 'en'.
+  Future<void> speakDirectly(String text, {String lang = 'ur'}) async {
+    await _speak(text, language: lang);
+  }
 
   /// Inject the DineInProvider.addItem callback so voice commands add items
   /// to the dine-in session order rather than the delivery CartProvider.
@@ -278,6 +295,18 @@ class VoiceOrderHandler extends ChangeNotifier {
         _pendingCustomDealQuery = null;
       }
 
+      // Checkout-screen interceptor: handles COD/card/place-order commands
+      // directly without going through the full backend pipeline.
+      if (_checkoutInterceptor != null &&
+          _checkoutInterceptor!(transcript)) {
+        return; // fully handled
+      }
+
+      // Global interceptor for order status and payment cards
+      if (await _handleGlobalVoiceCommands(context, transcript)) {
+        return;
+      }
+
       await _executeFromResponse(context, transcript, voiceRes);
     } on ChatServiceException catch (e, st) {
       debugPrint('[VoiceOrderHandler] ChatServiceException: $e\n$st');
@@ -327,6 +356,17 @@ class VoiceOrderHandler extends ChangeNotifier {
             return;
           }
           _pendingCustomDealQuery = null;
+        }
+
+        // Checkout-screen interceptor for English commands.
+        if (_checkoutInterceptor != null &&
+            _checkoutInterceptor!(text.trim())) {
+          return; // fully handled
+        }
+
+        // Global interceptor for order status and payment cards
+        if (await _handleGlobalVoiceCommands(context, text.trim())) {
+          return;
         }
 
         await _runCommand(context, text.trim());
@@ -393,6 +433,92 @@ class VoiceOrderHandler extends ChangeNotifier {
     }
   }
 
+  Future<bool> _handleGlobalVoiceCommands(BuildContext context, String transcript) async {
+    final t = transcript.toLowerCase().trim();
+
+    // 1. Check for Add Card / Card Payment
+    final isNewCard = t.contains('new card') ||
+        t.contains('naya card') ||
+        t.contains('add card') ||
+        t.contains('نیا کارڈ');
+
+    final isCard = t.contains('card') ||
+        t.contains('کارڈ') ||
+        t.contains('online');
+
+    if (isNewCard || isCard) {
+      await speakDirectly(isNewCard ? 'نیا کارڈ شامل کریں۔' : 'کارڈ پیمنٹ سیکشن کھول رہا ہوں۔', lang: 'ur');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+           Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()));
+        }
+      });
+      return true;
+    }
+
+    // 2. Check for Order Status
+    final isStatus = t.contains('status') ||
+        t.contains('time') ||
+        t.contains('kitni dair') ||
+        t.contains('waqt') ||
+        t.contains('time left') ||
+        t.contains('kahan');
+
+    if (isStatus) {
+      await _fetchAndSpeakOrderStatus(context);
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _fetchAndSpeakOrderStatus(BuildContext context) async {
+    try {
+      final res = await OrderService.getMyOrders();
+      final orders = (res['orders'] as List?) ?? [];
+      
+      final activeOrder = orders.firstWhere(
+        (o) => !['completed', 'cancelled'].contains(o['status'].toString().toLowerCase()),
+        orElse: () => null,
+      );
+
+      if (activeOrder == null) {
+        await speakDirectly('آپ کا کوئی ایکٹو آرڈر نہیں ہے۔', lang: 'ur');
+        return;
+      }
+
+      final status = activeOrder['status'].toString().toLowerCase();
+      final prepTime = (activeOrder['estimated_prep_time_minutes'] as num?)?.toInt() ?? 15;
+
+      String timeStr;
+      final base = prepTime > 0 ? prepTime : 15;
+      if (status == 'confirmed' || status == 'in_kitchen') {
+        timeStr = '$base منٹ';
+      } else if (status == 'preparing') {
+        final left = (base - 3).clamp(1, 99);
+        timeStr = '$left منٹ';
+      } else if (status == 'ready') {
+        final left = (base ~/ 6).clamp(1, 99);
+        timeStr = '$left منٹ';
+      } else {
+        timeStr = '$base منٹ';
+      }
+
+      String urduMsg;
+      if (status == 'ready') {
+        urduMsg = 'آپ کا آرڈر تیار ہے۔';
+      } else if (status == 'preparing' || status == 'in_kitchen') {
+        urduMsg = 'آپ کا آرڈر تیار ہو رہا ہے۔ تقریباً $timeStr لگیں گے۔';
+      } else {
+        urduMsg = 'تقریباً $timeStr باقی ہیں۔';
+      }
+
+      await speakDirectly(urduMsg, lang: 'ur');
+    } catch (e) {
+      await speakDirectly('آرڈر چیک کرنے میں مسئلہ ہوا۔', lang: 'ur');
+    }
+  }
+
   Future<void> _handleResult(
     BuildContext context,
     VoiceCommandResult result, {
@@ -446,15 +572,10 @@ class VoiceOrderHandler extends ChangeNotifier {
 
     if (action == 'added_to_cart') {
       await _speak(result.reply);
-      // Upsell is best-effort — if the cart provider, network, or chat
-      // service raises anything, swallow it. A failed upsell must never
-      // cascade into the outer catch-all which would show the generic
-      // "خرابی — دوبارہ کوشش کریں" popup after a perfectly successful add.
-      try {
-        await _checkUpsell(context);
-      } catch (e, st) {
-        debugPrint('[VoiceOrderHandler] upsell failed (non-fatal): $e\n$st');
-      }
+      // Navigate to cart so the user can see the item(s) they just added.
+      // Small delay lets TTS start speaking before the screen transitions.
+      await Future.delayed(const Duration(milliseconds: 400));
+      _nav?.openCart();
       return;
     }
 
@@ -560,8 +681,13 @@ class VoiceOrderHandler extends ChangeNotifier {
   }
 
   // ── TTS ───────────────────────────────────────────────────
-  Future<bool> _speakWithBackendGtts(String text) async {
-    if (!_isUrdu || text.trim().isEmpty) return false;
+  // Guard so a second _speak call arriving while audio is already playing
+  // doesn't stack a second voice on top of the first.
+  bool _isSpeaking = false;
+
+  Future<bool> _speakWithBackendGtts(String text, {String? language}) async {
+    final useUrdu = language == 'ur' || (language == null && _isUrdu);
+    if (!useUrdu || text.trim().isEmpty) return false;
 
     try {
       final res = await http
@@ -572,9 +698,7 @@ class VoiceOrderHandler extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 16));
 
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        return false;
-      }
+      if (res.statusCode < 200 || res.statusCode >= 300) return false;
 
       final decoded = jsonDecode(res.body);
       if (decoded is! Map<String, dynamic>) return false;
@@ -589,36 +713,68 @@ class VoiceOrderHandler extends ChangeNotifier {
           ? audioUrl
           : '${ApiConfig.baseUrl}$audioUrl';
 
+      // Stop both engines before playing so nothing overlaps.
+      await _tts.stop();
       await _gttsPlayer.stop();
+
+      // Play and await completion so the caller knows when audio has finished.
+      final completer = Completer<void>();
+      _gttsPlayer.onPlayerComplete.first.then((_) {
+        if (!completer.isCompleted) completer.complete();
+      });
       await _gttsPlayer.play(UrlSource(absoluteUrl));
+
+      // Safety timeout — complete anyway if the completion event never fires
+      // (e.g. network drop mid-stream) so we don't hang forever.
+      await completer.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {},
+      );
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  Future<void> _speak(String text) async {
-    // Strip markdown / emojis BEFORE sending to either gTTS or the on-device
-    // TTS engine — otherwise Urdu voices pronounce `*` as "sitara", `#` as
-    // "hash", and emojis as their shortcode names.
+  Future<void> _speak(String text, {String? language}) async {
     final clean = _sanitizeForSpeech(text);
     if (!_ttsReady || clean.isEmpty) return;
+
+    // Dedup: skip if we said the exact same thing within 10 s.
     final now = DateTime.now();
     if (clean == _lastAnnouncedMessage &&
         now.difference(_lastAnnouncementTime).inSeconds < 10) {
       return;
     }
 
-    final playedByGtts = await _speakWithBackendGtts(clean);
-    if (!playedByGtts) {
-      await _gttsPlayer.stop();
+    // Serialize: if already speaking, stop whatever is playing first.
+    if (_isSpeaking) {
       await _tts.stop();
-      await _tts.speak(clean);
+      await _gttsPlayer.stop();
+    }
+    _isSpeaking = true;
+
+    try {
+      final playedByGtts = await _speakWithBackendGtts(clean, language: language);
+      if (!playedByGtts) {
+        // FlutterTts fallback — stop gTTS just in case, then speak.
+        await _gttsPlayer.stop();
+        await _tts.stop();
+        if (language != null) {
+          await _tts.setLanguage(language == 'ur' ? 'ur-PK' : 'en-US');
+        }
+        await _tts.speak(clean);
+        // Await FlutterTts completion.
+        await _tts.awaitSpeakCompletion(true);
+      }
+    } finally {
+      _isSpeaking = false;
     }
 
     _lastAnnouncedMessage = clean;
     _lastAnnouncementTime = now;
   }
+
 
   /// Removes markdown decorations (`**`, `__`, `#`, backticks, bullets) and
   /// emojis so text-to-speech reads a natural sentence instead of announcing

@@ -9,6 +9,9 @@ import 'package:khaadim/services/cart_service.dart';
 import 'package:khaadim/services/dine_in_service.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/widgets/kiosk_voice_fab.dart';
+import 'package:khaadim/widgets/mic_button.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/widgets/voice_order_handler.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -23,12 +26,44 @@ class _CartScreenState extends State<CartScreen> {
   bool _isSendingToKitchen = false;
   String _lastKioskRecommendationKey = '';
 
+  // ── Voice ──────────────────────────────────────────────────
+  late final VoiceOrderHandler _voiceHandler;
+
   @override
   void initState() {
     super.initState();
-    final cartProvider = context.read<CartProvider>();
+    _voiceHandler = VoiceOrderHandler();
+    _voiceHandler.init();
+    // Nav callbacks: from Cart we can go to Checkout or pop back.
+    _voiceHandler.setNavCallbacks(
+      VoiceNavCallbacks(
+        switchTab: (_) {},
+        openMenuWithFilter: ({String? cuisine, String? category}) {
+          Navigator.pop(context);
+        },
+        openCart: () {},   // already on cart
+        openCheckout: ({String paymentMethod = 'COD'}) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CheckoutScreen(
+                initialPaymentMethod: paymentMethod,
+              ),
+            ),
+          );
+        },
+        openOrders: () => Navigator.pop(context),
+        openFavourites: () => Navigator.pop(context),
+        openRecommendations: () => Navigator.pop(context),
+        openDealsWithFilter: ({
+          String? cuisineFilter,
+          String? servingFilter,
+          int? highlightDealId,
+        }) => Navigator.pop(context),
+      ),
+    );
 
-    // On open, pull latest snapshot from server then load recommendations
+    final cartProvider = context.read<CartProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (AppConfig.isKiosk) {
         await _loadKioskRecommendations();
@@ -37,6 +72,12 @@ class _CartScreenState extends State<CartScreen> {
       await cartProvider.sync();
       _loadRecommendations();
     });
+  }
+
+  @override
+  void dispose() {
+    _voiceHandler.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRecommendations() async {
@@ -707,6 +748,17 @@ class _CartScreenState extends State<CartScreen> {
               ],
             );
           },
+        ),
+        // ── Voice mic FAB (delivery mode only) ────────────────────
+        floatingActionButton: AnimatedBuilder(
+          animation: _voiceHandler,
+          builder: (_, __) => MicButton(
+            isRecording: _voiceHandler.isRecording,
+            isProcessing: _voiceHandler.isProcessing,
+            onPressDown: () => _voiceHandler.onMicDown(context),
+            onPressUp: () => _voiceHandler.onMicUp(context),
+            onCancel: _voiceHandler.onMicCancel,
+          ),
         ),
       ),
     );

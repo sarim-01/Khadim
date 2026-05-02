@@ -12,6 +12,8 @@ import 'package:khaadim/services/dine_in_service.dart';
 import 'package:khaadim/services/voice_deal_service.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/services/favorites_service.dart';
+import 'package:khaadim/providers/favourites_notifier.dart';
 
 double _stringSimilarity(String a, String b) {
   if (a.isEmpty || b.isEmpty) return 0;
@@ -83,6 +85,14 @@ class VoiceCommandService {
   late final VoiceDealService _dealService;
   DineInAddItemCallback? _dineInAddItem;
 
+  // ── Per-command cache ─────────────────────────────────────
+  // Populated on the first item lookup within a single voice command and
+  // reused for every subsequent item in the same response.  Reset at the
+  // start of each executeFromResponse / execute call so data never goes stale
+  // across separate voice commands.
+  List<Map<String, dynamic>>? _cachedMenuItems;
+  List<Map<String, dynamic>>? _cachedDeals;
+
   static const Map<String, String> _spokenWordNormalization = {
     'hondi': 'handi',
     'handy': 'handi',
@@ -114,6 +124,9 @@ class VoiceCommandService {
     VoiceNavCallbacks? nav,
     ConversationMemory? memory,
   }) async {
+    // Reset per-command cache so each voice turn starts fresh.
+    _cachedMenuItems = null;
+    _cachedDeals = null;
     try {
       final reply = (response['reply'] as String? ?? '').trim();
       var toolCalls =
@@ -514,6 +527,59 @@ class VoiceCommandService {
           if (action == 'show') {
             nav?.openFavourites();
             navigated = true;
+          } else if (action == 'add' || action == 'remove') {
+            final itemName = args['item_name'] ?? '';
+            final itemIdStr = args['item_id'] ?? '';
+            final itemType = args['item_type'] ?? '';
+
+            if (itemIdStr.isNotEmpty && itemType.isNotEmpty) {
+              final itemId = int.tryParse(itemIdStr);
+              if (itemId != null) {
+                try {
+                  int? reqItemId;
+                  int? reqDealId;
+                  if (itemType == 'menu_item') reqItemId = itemId;
+                  else if (itemType == 'deal') reqDealId = itemId;
+
+                  final res = await FavouritesService.toggleFavourite(
+                    itemId: reqItemId,
+                    dealId: reqDealId,
+                  );
+
+                  // Determine actual action from server response (toggle
+                  // means it may have added OR removed based on current state).
+                  final serverAction = (res['action'] as String? ?? action);
+                  final wasAdded = serverAction == 'added';
+
+                  // Notify notifier so heart icons update without a reload.
+                  if (itemType == 'menu_item') {
+                    FavouritesNotifier.instance.updateItem(itemId, added: wasAdded);
+                  } else if (itemType == 'deal') {
+                    FavouritesNotifier.instance.updateDeal(itemId, added: wasAdded);
+                  }
+
+                  if (effectiveReply.isEmpty) {
+                    if (wasAdded) {
+                      effectiveReply = language.toLowerCase() == 'ur'
+                          ? '${itemName.isNotEmpty ? itemName : "آئٹم"} فیورٹ میں شامل کر دیا گیا۔'
+                          : 'Added ${itemName.isNotEmpty ? itemName : "item"} to favourites.';
+                    } else {
+                      effectiveReply = language.toLowerCase() == 'ur'
+                          ? '${itemName.isNotEmpty ? itemName : "آئٹم"} فیورٹ سے ہٹا دیا گیا۔'
+                          : 'Removed ${itemName.isNotEmpty ? itemName : "item"} from favourites.';
+                    }
+                  }
+                } catch (_) {
+                  if (effectiveReply.isEmpty) {
+                    effectiveReply = _localized(language, urdu: 'ایک مسئلہ پیش آیا۔', english: 'An error occurred.');
+                  }
+                }
+              }
+            } else {
+              if (effectiveReply.isEmpty) {
+                effectiveReply = _localized(language, urdu: 'آئٹم نہیں ملا۔', english: 'Item not found.');
+              }
+            }
           }
           lastAction = 'favourites_$action';
           break;
@@ -575,11 +641,12 @@ class VoiceCommandService {
       }
     }
 
-    // Build a client-side fallback reply only when the backend sent none.
-    // The per-item list makes each utterance unique so the TTS dedup
-    // guard (same text within 10s → skip) stops silencing add-to-cart
-    // confirmations.
-    if (effectiveReply.isEmpty && addedCount > 0) {
+    // BUG-FIX: When items were actually added, ALWAYS build a clean
+    // confirmation reply — never let a search-result string (e.g.
+    // "یہ ملتے جلتے آئٹمز ہیں") leak through from the backend reply.
+    // The per-item list keeps each utterance unique so the TTS dedup
+    // guard doesn't silence consecutive add-to-cart confirmations.
+    if (addedCount > 0) {
       final uniqueNames = <String>[];
       for (final n in addedNames) {
         if (!uniqueNames.contains(n)) uniqueNames.add(n);
@@ -591,9 +658,9 @@ class VoiceCommandService {
           effectiveReply =
               '${uniqueNames[0]} اور ${uniqueNames[1]} کارٹ میں شامل کر دیے۔';
         } else if (uniqueNames.isNotEmpty) {
-          final head = uniqueNames.sublist(0, uniqueNames.length - 1).join('، ');
-          effectiveReply =
-              '$head اور ${uniqueNames.last} کارٹ میں شامل کر دیے۔';
+          final head =
+              uniqueNames.sublist(0, uniqueNames.length - 1).join('، ');
+          effectiveReply = '$head اور ${uniqueNames.last} کارٹ میں شامل کر دیے۔';
         } else {
           effectiveReply = 'آئٹم کارٹ میں شامل کر دیا۔';
         }
@@ -604,7 +671,8 @@ class VoiceCommandService {
           effectiveReply =
               'Added ${uniqueNames[0]} and ${uniqueNames[1]} to your cart.';
         } else if (uniqueNames.isNotEmpty) {
-          final head = uniqueNames.sublist(0, uniqueNames.length - 1).join(', ');
+          final head =
+              uniqueNames.sublist(0, uniqueNames.length - 1).join(', ');
           effectiveReply =
               'Added $head and ${uniqueNames.last} to your cart.';
         } else {
@@ -1077,6 +1145,35 @@ class VoiceCommandService {
   }
 
   // ── Cart helpers ──────────────────────────────────────────
+
+  /// Lazily fetch and cache the full menu list for this voice command cycle.
+  Future<List<Map<String, dynamic>>> _getMenuCache() async {
+    if (_cachedMenuItems != null) return _cachedMenuItems!;
+    try {
+      final res = await ApiClient.getJson('/menu', auth: false);
+      _cachedMenuItems =
+          (res['menu'] as List? ?? []).cast<Map<String, dynamic>>();
+    } catch (_) {
+      _cachedMenuItems = [];
+    }
+    return _cachedMenuItems!;
+  }
+
+  /// Lazily fetch and cache the full deals list for this voice command cycle.
+  Future<List<Map<String, dynamic>>> _getDealsCache() async {
+    if (_cachedDeals != null) return _cachedDeals!;
+    try {
+      final res = await ApiClient.getJson('/deals', auth: false);
+      _cachedDeals = (res['deals'] as List? ?? [])
+          .whereType<Map>()
+          .map((d) => Map<String, dynamic>.from(d))
+          .toList();
+    } catch (_) {
+      _cachedDeals = [];
+    }
+    return _cachedDeals!;
+  }
+
   Future<bool> _addToCart(
       BuildContext context, Map<String, String> args) async {
     try {
@@ -1128,8 +1225,45 @@ class VoiceCommandService {
 
       // ── Delivery / Customer path ──────────────────────────
       final cart = Provider.of<CartProvider>(context, listen: false);
-      final cartId = cart.cartId;
+
+      // BUG-FIX 2: auto-initialize cart when cartId is null so the first
+      // voice add-to-cart doesn't silently fail on a fresh session.
+      String? cartId = cart.cartId;
+      if (cartId == null) {
+        try {
+          final freshCart = await CartService.getOrCreateActiveCart();
+          cartId = (freshCart['cart_id'] ?? '').toString();
+          if (cartId.isEmpty) cartId = null;
+          // Keep provider in sync so the badge updates.
+          if (cartId != null && context.mounted) {
+            Provider.of<CartProvider>(context, listen: false).sync();
+          }
+        } catch (_) {
+          cartId = null;
+        }
+      }
       if (cartId == null) return false;
+
+      // BUG-FIX 4: use pre-resolved item_id from backend when available,
+      // skipping the second /menu HTTP lookup entirely.
+      final preResolvedId = int.tryParse(args['item_id'] ?? '');
+      final preResolvedType = (args['item_type'] ?? '').trim();
+      if (preResolvedId != null &&
+          preResolvedId > 0 &&
+          preResolvedType.isNotEmpty) {
+        await CartService.addItem(
+          cartId: cartId,
+          itemType: preResolvedType,
+          itemId: preResolvedId,
+          quantity: qty,
+        );
+        if (context.mounted) {
+          Provider.of<CartProvider>(context, listen: false).sync();
+        }
+        return true;
+      }
+
+      // Fallback: resolve by name via cached menu/deals list (BUG-FIX 3).
       final itemId = await _findItemIdByName(itemName);
       if (itemId != null) {
         await CartService.addItem(
@@ -1159,14 +1293,17 @@ class VoiceCommandService {
   }
 
   /// Returns the full menu-item map (including price and name) for a given
-  /// display name, using an exact match then a partial-match fallback.
+  /// display name, using an exact match then fuzzy fallback.
+  /// Uses the per-command cache so only one /menu HTTP call is made per
+  /// voice command regardless of how many items are in the response.
   Future<Map<String, dynamic>?> _findItemDetailsByName(String name) async {
     try {
-      final res = await ApiClient.getJson('/menu', auth: false);
-      final items = (res['menu'] as List? ?? []).cast<Map<String, dynamic>>();
+      // BUG-FIX 3: use shared cache instead of a fresh HTTP call each time.
+      final items = await _getMenuCache();
       final lower = name.toLowerCase().trim();
       final normalizedTarget = _normalizeSpokenName(lower);
 
+      // 1. Exact match.
       for (final item in items) {
         final rawName = (item['item_name'] as String? ?? '').toLowerCase();
         final normalizedItem = _normalizeSpokenName(rawName);
@@ -1175,6 +1312,7 @@ class VoiceCommandService {
         }
       }
 
+      // 2. Substring containment.
       for (final item in items) {
         final rawName = (item['item_name'] as String? ?? '').toLowerCase();
         final normalizedItem = _normalizeSpokenName(rawName);
@@ -1186,25 +1324,20 @@ class VoiceCommandService {
         }
       }
 
+      // 3. Fuzzy similarity (conservative threshold to avoid wrong items).
       Map<String, dynamic>? bestItem;
       var bestScore = 0.0;
-
       for (final item in items) {
         final rawName = (item['item_name'] as String? ?? '').toLowerCase();
         final normalizedItem = _normalizeSpokenName(rawName);
         if (normalizedItem.isEmpty) continue;
-
         final score = _stringSimilarity(normalizedTarget, normalizedItem);
         if (score > bestScore) {
           bestScore = score;
           bestItem = item;
         }
       }
-
-      // Conservative threshold to avoid wrong-item additions.
-      if (bestItem != null && bestScore >= 0.78) {
-        return bestItem;
-      }
+      if (bestItem != null && bestScore >= 0.78) return bestItem;
 
       return null;
     } catch (_) {
@@ -1227,19 +1360,34 @@ class VoiceCommandService {
 
   Future<Map<String, dynamic>?> _findDealDetailsByName(String name) async {
     try {
-      final res = await ApiClient.getJson('/deals', auth: false);
-      final rawDeals = (res['deals'] as List? ?? []).cast<dynamic>();
-      final deals = rawDeals
-          .whereType<Map>()
-          .map((d) => Map<String, dynamic>.from(d))
-          .toList();
+      // BUG-FIX 3: use shared cache instead of a fresh HTTP call each time.
+      final deals = await _getDealsCache();
       final lower = name.toLowerCase().trim();
 
+      // 1. Exact match.
       for (final deal in deals) {
         final dealName = (deal['deal_name'] as String? ?? '').toLowerCase();
         if (dealName == lower) return deal;
       }
 
+      // 2. BUG-FIX 5: fuzzy similarity before substring — prevents "BBQ Deal"
+      //    from incorrectly matching "BBQ Family Deal" because the shorter
+      //    string is a substring of the longer one.
+      Map<String, dynamic>? bestDeal;
+      double bestScore = 0.0;
+      for (final deal in deals) {
+        final dealName = (deal['deal_name'] as String? ?? '').toLowerCase();
+        if (dealName.isEmpty) continue;
+        final score = _stringSimilarity(lower, dealName);
+        if (score > bestScore) {
+          bestScore = score;
+          bestDeal = deal;
+        }
+      }
+      // Use similarity result only when confidence is reasonable.
+      if (bestDeal != null && bestScore >= 0.72) return bestDeal;
+
+      // 3. Substring fallback (last resort, most permissive).
       for (final deal in deals) {
         final dealName = (deal['deal_name'] as String? ?? '').toLowerCase();
         if (dealName.contains(lower) || lower.contains(dealName)) {

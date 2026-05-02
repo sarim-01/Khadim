@@ -309,3 +309,37 @@ def get_feedback_for_item(
         "average_rating": float(agg["average_rating"] or 0),
         "feedback": [dict(r) for r in rows],
     }
+
+
+# ─── GET /feedback/me/average ────────────────────────────────────
+# Returns the current user's average rating across all their submitted
+# feedback. Used by the re-engagement service to compute an engagement
+# score for personalised push notifications.
+
+@router.get("/me/average")
+def get_my_average_rating(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    user_id = str(current_user["user_id"])
+
+    with SQL_ENGINE.connect() as conn:
+        row = conn.execute(
+            text("""
+                SELECT
+                    COUNT(*)                              AS total_reviews,
+                    ROUND(AVG(rating)::numeric, 2)        AS average_rating
+                FROM public.feedback
+                WHERE user_id = :uid
+                  AND rating IS NOT NULL
+            """),
+            {"uid": user_id},
+        ).mappings().first()
+
+    total = int(row["total_reviews"]) if row else 0
+    avg   = float(row["average_rating"] or 0) if row else 0.0
+
+    return {
+        "user_id": user_id,
+        "total_reviews": total,
+        "average_rating": avg,
+    }

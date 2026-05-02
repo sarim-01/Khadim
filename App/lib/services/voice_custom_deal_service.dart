@@ -24,7 +24,7 @@ import 'package:khaadim/providers/cart_provider.dart';
 /// Signature for an external speaker that can route text through the
 /// backend gTTS pipeline (needed for Urdu) and gracefully fall back to the
 /// on-device TTS engine. Pass the owning widget's `_speak` to wire it up.
-typedef VoiceSpeaker = Future<void> Function(String text);
+typedef VoiceSpeaker = Future<void> Function(String text, {String? language});
 
 class VoiceCustomDealService {
   final FlutterTts _tts;
@@ -78,6 +78,7 @@ class VoiceCustomDealService {
           (voiceMsg != null && voiceMsg.isNotEmpty)
               ? voiceMsg
               : displayMsg,
+          language: language,
         );
 
         return VoiceCustomDealResult(
@@ -104,7 +105,7 @@ class VoiceCustomDealService {
           ? voiceFromBackend
           : _sanitizeForSpeech(summaryMsg);
 
-      await _speak(spokenText);
+      await _speak(spokenText, language: language);
 
       // ── Step 2: Show confirmation dialog ──────────────────
       if (!context.mounted) {
@@ -119,7 +120,7 @@ class VoiceCustomDealService {
       );
 
       if (!confirmed) {
-        await _speak(language == 'ur' ? 'ٹھیک ہے، ڈیل کینسل' : 'Deal cancelled.');
+        await _speak(language == 'ur' ? 'ٹھیک ہے، ڈیل کینسل' : 'Deal cancelled.', language: language);
         return VoiceCustomDealResult(confirmed: false);
       }
 
@@ -154,7 +155,7 @@ class VoiceCustomDealService {
         final doneMsg = language == 'ur'
             ? 'کسٹم ڈیل آپ کے آرڈر میں شامل کر دی گئی ہے۔'
             : 'Custom deal has been added to your order.';
-        await _speak(doneMsg);
+        await _speak(doneMsg, language: language);
 
         return const VoiceCustomDealResult(confirmed: true, addedToCart: true);
       }
@@ -219,7 +220,7 @@ class VoiceCustomDealService {
       final doneMsg = language == 'ur'
           ? 'ڈیل کارٹ میں شامل کر دی گئی!'
           : 'Deal added to your cart!';
-      await _speak(doneMsg);
+      await _speak(doneMsg, language: language);
 
       return VoiceCustomDealResult(confirmed: true, addedToCart: true);
 
@@ -259,7 +260,7 @@ class VoiceCustomDealService {
     return result ?? false;
   }
 
-  Future<void> _speak(String text) async {
+  Future<void> _speak(String text, {String? language}) async {
     try {
       final clean = _sanitizeForSpeech(text);
       if (clean.isEmpty) return;
@@ -270,11 +271,14 @@ class VoiceCustomDealService {
       // audio at all on devices without a native Urdu voice.
       final speaker = _externalSpeaker;
       if (speaker != null) {
-        await speaker(clean);
+        await speaker(clean, language: language);
         return;
       }
 
       await _tts.stop();
+      if (language != null) {
+        await _tts.setLanguage(language == 'ur' ? 'ur-PK' : 'en-US');
+      }
       await _tts.speak(clean);
     } catch (e, st) {
       debugPrint('[VoiceCustomDeal] TTS speak failed: $e\n$st');

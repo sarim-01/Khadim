@@ -807,6 +807,201 @@ def _parse_qty_token(token: str) -> Optional[int]:
     return _QTY_WORDS.get(t)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# URDU TRANSCRIPT  →  DIRECT CART EXTRACTION
+# ─────────────────────────────────────────────────────────────────────────────
+# ElevenLabs returns correct Urdu (e.g. "دیسی ڈیو کارٹ میں ڈال دو") but the
+# static translate_urdu_to_english() often mangles item names into gibberish
+# ("Add desi dev cut in the order.").  This layer intercepts the raw Urdu
+# transcript BEFORE translation so item names survive intact.
+
+_URDU_ITEM_WORD_MAP: Dict[str, str] = {
+    # Cuisine
+    "دیسی": "desi", "چائنیز": "chinese", "چاینیز": "chinese",
+    "چائینیز": "chinese",
+    "بی بی کیو": "bbq",
+    # Proteins
+    "چکن": "chicken", "مٹن": "mutton", "بیف": "beef", "فش": "fish",
+    "پراون": "prawn", "انڈہ": "egg",
+    # Dishes — multiple common spellings for each
+    "کڑاہی": "karahi", "کڑاھی": "karahi",
+    "کڑھائی": "karahi", "کڑہائی": "karahi",   # ← additional spellings
+    "کڑھی": "karahi", "قرمہ": "korma",
+    "بریانی": "biryani", "برئانی": "biryani",
+    "حلیم": "haleem", "نہاری": "nihari", "پلاؤ": "pulao",
+    "قورمہ": "korma", "ہنڈی": "handi", "دال": "daal",
+    "تکہ": "tikka", "تکا": "tikka", "بوٹی": "boti",
+    "سیخ": "seekh", "کباب": "kabab",
+    # Breads
+    "نان": "naan", "روٹی": "roti", "پراٹھا": "paratha", "کلچہ": "kulcha",
+    # Fast food
+    "برگر": "burger", "زنگر": "zinger", "پیزا": "pizza",
+    "فرائز": "fries", "نگٹس": "nuggets", "رول": "roll",
+    "سینڈوچ": "sandwich", "ریپ": "wrap",
+    # Drinks
+    "ڈیو": "dew", "کولا": "cola", "پیپسی": "pepsi",
+    "اسپرائٹ": "sprite", "سپرائٹ": "sprite",
+    "جوس": "juice", "لسی": "lassi", "چائے": "chai",
+    "شیک": "shake", "پانی": "water", "سوپ": "soup", "کافی": "coffee",
+    # Qualifiers / deal words
+    "فیملی": "family", "سولو": "solo", "ڈیل": "deal",
+    "اسپیشل": "special", "ڈبل": "double", "سنگل": "single",
+    "میگا": "mega", "باکس": "box", "کومبو": "combo",
+    "پارٹی": "party", "ٹاور": "tower", "مکس": "mix",
+    # Numbers
+    "ایک": "1", "دو": "2", "تین": "3", "چار": "4", "پانچ": "5",
+}
+
+_URDU_ADD_PATTERNS: List[str] = [
+    # X کارٹ/کاٹ میں ڈال/شامل دو/دیں
+    r"^(.+?)\s+(?:کارٹ|کاٹ|کارڈ)\s+میں\s+(?:ڈال|شامل|add|ایڈ)\s*(?:دو|دیں|دیجیے|کریں|کرو|کر\s*دو)?\s*$",
+    # X ڈال دو / شامل کرو
+    r"^(.+?)\s+(?:ڈال\s*دو|ڈال\s*دیں|شامل\s*کرو|شامل\s*کریں|شامل\s*کر\s*دو)\s*$",
+    # X add karo/kar do/krdo
+    r"^(.+?)\s+(?:add|ایڈ)\s+(?:karo|kar\s*do|krdo|kardo|karein)\s*$",
+    # X میں ڈال (short)
+    r"^(.+?)\s+میں\s+(?:ڈال|شامل)\s*(?:دو|دیں|کریں)?\s*$",
+]
+
+_URDU_QTY_WORDS: Dict[str, int] = {
+    "ایک": 1, "دو": 2, "تین": 3, "چار": 4, "پانچ": 5,
+    "چھ": 6, "سات": 7, "آٹھ": 8, "نو": 9, "دس": 10,
+}
+
+
+def _translate_urdu_item_phrase(phrase: str) -> str:
+    """Word-by-word Urdu → English using the restaurant word map."""
+    phrase = (phrase or "").strip()
+    if not phrase:
+        return ""
+    words = phrase.split()
+    result: List[str] = []
+    i = 0
+    while i < len(words):
+        if i + 1 < len(words):
+            two = words[i] + " " + words[i + 1]
+            if two in _URDU_ITEM_WORD_MAP:
+                result.append(_URDU_ITEM_WORD_MAP[two])
+                i += 2
+                continue
+        mapped = _URDU_ITEM_WORD_MAP.get(words[i])
+        result.append(mapped if mapped else words[i])
+        i += 1
+    return " ".join(result).strip()
+
+
+def _extract_urdu_add_to_cart(
+    raw_transcript: str,
+    *,
+    voice_strict: bool = True,
+) -> List[Dict[str, Any]]:
+    """Detect add-to-cart commands from raw Urdu before translation corrupts them.
+
+    Returns resolved add_to_cart tool-call dicts or [] on no match.
+    """
+    t = (raw_transcript or "").strip()
+    if not t:
+        return []
+
+    item_phrase_ur: Optional[str] = None
+    for pat in _URDU_ADD_PATTERNS:
+        m = re.match(pat, t)
+        if m:
+            item_phrase_ur = m.group(1).strip()
+            break
+    if not item_phrase_ur:
+        return []
+
+    # Strip leading Urdu quantity word.
+    qty = 1
+    qty_m = re.match(r"^(ایک|دو|تین|چار|پانچ|\d+)\s+(.+)$", item_phrase_ur)
+    if qty_m:
+        qty_tok = qty_m.group(1)
+        qty = _URDU_QTY_WORDS.get(qty_tok, int(qty_tok) if qty_tok.isdigit() else 1)
+        item_phrase_ur = qty_m.group(2).strip()
+
+    translated = _translate_urdu_item_phrase(item_phrase_ur)
+
+    for candidate in [translated, item_phrase_ur]:
+        if not candidate:
+            continue
+        resolved = _resolve_cart_item_name(candidate, voice_strict=voice_strict)
+        if resolved:
+            resolved_id, resolved_type = _lookup_resolved_item_id(resolved)
+            args: Dict[str, str] = {"item_name": resolved, "quantity": str(qty)}
+            if resolved_id is not None and resolved_type:
+                args["item_id"] = str(resolved_id)
+                args["item_type"] = resolved_type
+            return [{"name": "add_to_cart", "args": args}]
+
+    return []
+
+
+def _detect_urdu_add_to_cart_intent(raw_transcript: str) -> bool:
+    """Cheap check: does this Urdu transcript look like an add-to-cart command?
+
+    Only fires on URDU-SCRIPT cart signals (e.g. کارٹ میں, ڈال دو).
+    Roman-Urdu / mixed-language utterances like "cart میں add" are intentionally
+    left to the deterministic + LLM path which handles them better.
+    """
+    t = (raw_transcript or "").strip()
+    if not t:
+        return False
+    # Only Urdu-SCRIPT cart verbs — do NOT match Roman "cart" or "add karo".
+    urdu_signals = [
+        "کارٹ میں", "کاٹ میں",   # Urdu script only
+        "ڈال دو", "ڈال دیں",
+        "شامل کرو", "شامل کریں", "شامل کر دو",
+        "ایڈ کرو", "ایڈ کریں",
+    ]
+    for sig in urdu_signals:
+        if sig in t:
+            return True
+    return False
+
+
+def _lookup_resolved_item_id(
+    item_name: str,
+) -> tuple:
+    """Return (item_id, item_type) for an already-canonicalized item name.
+
+    Tries menu_item first (exact name match) then deal.  Used to pass
+    pre-resolved IDs to the Flutter client so it can skip a second HTTP call.
+    Returns (None, None) on any miss or error.
+    """
+    try:
+        rows = fetch_menu_items_by_name(item_name)
+        for r in rows:
+            if str(r.get("item_name") or "").strip().lower() == item_name.strip().lower():
+                item_id = r.get("item_id")
+                if item_id is not None:
+                    return (int(item_id), "menu_item")
+        # If ILIKE returned rows but none were exact, first row is still likely
+        # correct (the caller already canonicalized the name via fuzzy match).
+        if rows:
+            item_id = rows[0].get("item_id")
+            if item_id is not None:
+                return (int(item_id), "menu_item")
+    except Exception:
+        pass
+
+    try:
+        rows = fetch_deals_by_name(item_name)
+        for r in rows:
+            if str(r.get("deal_name") or "").strip().lower() == item_name.strip().lower():
+                deal_id = r.get("deal_id")
+                if deal_id is not None:
+                    return (int(deal_id), "deal")
+        if rows:
+            deal_id = rows[0].get("deal_id")
+            if deal_id is not None:
+                return (int(deal_id), "deal")
+    except Exception:
+        pass
+
+    return (None, None)
+
+
 def _build_add_to_cart_calls(
     raw: str,
     leading_qty: Optional[int] = None,
@@ -839,15 +1034,18 @@ def _build_add_to_cart_calls(
         if not item_name:
             continue
 
-        calls.append(
-            {
-                "name": "add_to_cart",
-                "args": {
-                    "item_name": item_name,
-                    "quantity": str(quantity),
-                },
-            }
-        )
+        # Resolve item_id + item_type so Flutter can skip its own /menu lookup.
+        resolved_id, resolved_type = _lookup_resolved_item_id(item_name)
+
+        args: Dict[str, str] = {
+            "item_name": item_name,
+            "quantity": str(quantity),
+        }
+        if resolved_id is not None and resolved_type:
+            args["item_id"] = str(resolved_id)
+            args["item_type"] = resolved_type
+
+        calls.append({"name": "add_to_cart", "args": args})
 
     return calls
 
@@ -1135,10 +1333,136 @@ def _deterministic_chat_tool_calls(
     if any(k in t for k in ["where is my order", "order status", "track my order", "eta", "time left", "how long"]):
         return [{"name": "get_order_status", "args": {}}]
 
-    if "favourite" in t or "favorite" in t:
+    # ── Favourites intent ─────────────────────────────────────────────────────
+    # Detect on BOTH normalized text AND raw transcript so the keyword is
+    # caught even when the translator leaves it intact (e.g. "favorite").
+    _fav_keywords = ("favourite", "favorite", "pasandida", "pasand", "پسندیدہ", "فیورٹ")
+    _has_fav = any(k in t for k in _fav_keywords)
+
+    if _has_fav:
+        # ─────────────────────────────────────────────────────────────────────
+        # ADD pattern — handles all four surface forms of the same command:
+        #
+        #   Roman Urdu : "cheese burger ko favourite me add krdo"
+        #   Mixed      : "fast solo a کو favorite میں add کر 2"   ← real ASR output
+        #   English    : "add cheese burger to favourites"
+        #   Urdu script: "چیز برگر پسندیدہ میں شامل کرو"
+        #
+        # Key insight from logs:
+        #   • Translator keeps Urdu postpositions as script (کو, میں, کر)
+        #   • "دو" (do) is often translated as the digit "2"
+        #   • Item name precedes the favourite keyword in Urdu word order
+        # ─────────────────────────────────────────────────────────────────────
+
+        # Urdu/mixed word-order: <item> [ko|کو] favourite [mein|میں] add [kar|کر] [do|2|...]
+        fav_add_urdu_order = re.search(
+            r"^(.+?)\s+"
+            r"(?:ko|کو|ka|کا)?\s*"
+            r"(?:favourite|favorite|pasandida|pasand|پسندیدہ|فیورٹ)e?s?\s+"
+            r"(?:mein|me|میں|main|mai|mein\s+hi)?\s*"
+            r"(?:add|shamil|شامل|daal|ڈال|rakh|رکھ|save)\s*"
+            r"(?:kar|karo|krdo|kardo|karde|کر|کرو|کردو|kar\s+do|kar\s+dena)?\s*"
+            r"(?:do|de|dena|dein|dijiye|دو|دیں|2)?\s*$",
+            t,
+            re.IGNORECASE,
+        )
+
+        # English word-order: "add <item> to favourites" / "save <item> in favourites"
+        fav_add_english = re.search(
+            r"\b(?:add|save|put|mark)\s+(.+?)\s+"
+            r"(?:(?:in|to|as|into)\s+(?:my\s+)?)?(?:favourite|favorite)s?\b",
+            t,
+            re.IGNORECASE,
+        )
+
+        # English reversed: "add to favourites <item>"
+        fav_add_english_rev = re.search(
+            r"\b(?:add|save)\s+(?:(?:to|in|into)\s+)?(?:my\s+)?(?:favourite|favorite)s?\s+(.+)$",
+            t,
+            re.IGNORECASE,
+        )
+
+        # Pure Urdu-script: "چیز برگر پسندیدہ میں شامل کرو"
+        fav_add_ur_script = re.search(
+            r"^(.+?)\s+(?:پسندیدہ|فیورٹ)\s*(?:میں|مین)?\s*(?:شامل|ڈال|رکھ)\s*(?:کرو|کریں|کردو|دو|دیں)?\s*$",
+            t,
+        )
+
+        # ── REMOVE patterns ──────────────────────────────────────────────────
+        fav_rem_urdu_order = re.search(
+            r"^(.+?)\s+"
+            r"(?:ko|کو|ka|کا)?\s*"
+            r"(?:favourite|favorite|pasandida|pasand|پسندیدہ|فیورٹ)e?s?\s*"
+            r"(?:se|سے)?\s*"
+            r"(?:remove|nikal|نکال|hata|ہٹا|delete|ہٹاؤ)\s*"
+            r"(?:kar|karo|krdo|kardo|کر|کرو|کردو|kar\s+do)?\s*"
+            r"(?:do|de|dena|دو|دیں|2)?\s*$",
+            t,
+            re.IGNORECASE,
+        )
+
+        fav_rem_english = re.search(
+            r"\b(?:remove|delete|unmark)\s+(.+?)\s+from\s+(?:my\s+)?(?:favourite|favorite)s?\b",
+            t,
+            re.IGNORECASE,
+        )
+
+        fav_rem_ur_script = re.search(
+            r"^(.+?)\s+(?:پسندیدہ|فیورٹ)\s*(?:سے)?\s*(?:ہٹا|نکال|ریموو)\s*(?:دو|دیں|کرو|کریں)?\s*$",
+            t,
+        )
+
+        # ── Resolve add phrase ────────────────────────────────────────────────
+        add_phrase = None
+        if fav_add_urdu_order:
+            add_phrase = fav_add_urdu_order.group(1).strip()
+        elif fav_add_english:
+            add_phrase = fav_add_english.group(1).strip()
+        elif fav_add_english_rev:
+            add_phrase = fav_add_english_rev.group(1).strip()
+        elif fav_add_ur_script:
+            add_phrase = fav_add_ur_script.group(1).strip()
+
+        if add_phrase:
+            # Strip any trailing Urdu/Roman noise the regex captured
+            add_phrase = re.sub(
+                r"\s+(?:ko|کو|kar|کر|karo|krdo|kardo|do|دو|de|dena|2)\s*$",
+                "", add_phrase, flags=re.IGNORECASE,
+            ).strip()
+            item = _resolve_cart_item_name(add_phrase, voice_strict=voice_strict)
+            if item:
+                resolved_id, resolved_type = _lookup_resolved_item_id(item)
+                fav_args = {"action": "add", "item_name": item}
+                if resolved_id is not None and resolved_type:
+                    fav_args["item_id"] = str(resolved_id)
+                    fav_args["item_type"] = resolved_type
+                return [{"name": "manage_favourites", "args": fav_args}]
+
+        # ── Resolve remove phrase ─────────────────────────────────────────────
+        rem_phrase = None
+        if fav_rem_urdu_order:
+            rem_phrase = fav_rem_urdu_order.group(1).strip()
+        elif fav_rem_english:
+            rem_phrase = fav_rem_english.group(1).strip()
+        elif fav_rem_ur_script:
+            rem_phrase = fav_rem_ur_script.group(1).strip()
+
+        if rem_phrase:
+            item = _resolve_cart_item_name(rem_phrase, voice_strict=voice_strict)
+            if item:
+                resolved_id, resolved_type = _lookup_resolved_item_id(item)
+                fav_args = {"action": "remove", "item_name": item}
+                if resolved_id is not None and resolved_type:
+                    fav_args["item_id"] = str(resolved_id)
+                    fav_args["item_type"] = resolved_type
+                return [{"name": "manage_favourites", "args": fav_args}]
+
+        # Default: show favourites screen
         return [{"name": "manage_favourites", "args": {"action": "show"}}]
 
     return None
+
+
 
 
 def _safe_domain_reply(language: str) -> str:
@@ -1813,6 +2137,14 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
             return "Opening that section now."
         if name in {"search_menu", "search_deal", "retrieve_menu_context"}:
             return "Here are the matching options."
+        if name == "manage_favourites":
+            action_val = str((args or {}).get("action") or "").lower()
+            item_val = str((args or {}).get("item_name") or "").strip()
+            if action_val == "add":
+                return f"Added {item_val} to your favourites." if item_val else "Added to favourites."
+            if action_val == "remove":
+                return f"Removed {item_val} from your favourites." if item_val else "Removed from favourites."
+            return "Opening your favourites."
         return "Done."
 
     if name == "add_to_cart":
@@ -1843,6 +2175,14 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
         return "متعلقہ اسکرین کھول رہا ہوں۔"
     if name in {"search_menu", "search_deal", "retrieve_menu_context"}:
         return "یہ رہے متعلقہ آپشنز۔"
+    if name == "manage_favourites":
+        action_val = str((args or {}).get("action") or "").lower()
+        item_val = str((args or {}).get("item_name") or "").strip()
+        if action_val == "add":
+            return f"{item_val} فیورٹ میں شامل کر دیا۔" if item_val else "فیورٹ میں شامل کر دیا۔"
+        if action_val == "remove":
+            return f"{item_val} فیورٹ سے ہٹا دیا۔" if item_val else "فیورٹ سے ہٹا دیا۔"
+        return "آپ کی پسندیدہ فہرست کھول رہا ہوں۔"
     return "ٹھیک ہے۔"
 
 
@@ -2810,9 +3150,24 @@ async def chat_voice_endpoint(
 
         # 3) Deterministic-first routing, then LLM fallback.
         # voice_strict=True: do not fuzzy-map vague ASR tokens to random menu rows.
+        _urdu_cart_intent_detected = False  # set True when Urdu-cart extractor fires
         deterministic_calls = _deterministic_chat_tool_calls(
             normalized_text, nlp, voice_strict=True
         )
+
+        # ── Favourites dual-pass ──────────────────────────────────────────────
+        # If normalized text didn't trigger a favourites action, try the raw
+        # Urdu transcript so Roman-Urdu phrases like
+        # "cheese burger ko favourite me add krdo" still work even when the
+        # translator drops or changes "favourite".
+        if not deterministic_calls:
+            _fav_raw_keys = ("favourite", "favorite", "pasandida", "pasand", "پسندیدہ", "فیورٹ")
+            raw_lower = (transcript or "").lower()
+            if any(k in raw_lower for k in _fav_raw_keys):
+                deterministic_calls = _deterministic_chat_tool_calls(
+                    transcript, nlp, voice_strict=True
+                )
+
         if deterministic_calls:
             deterministic_calls = _canonicalize_action_item_names(
                 deterministic_calls, voice_strict=True
@@ -2822,6 +3177,31 @@ async def chat_voice_endpoint(
                 tool_calls=deterministic_calls,
             )
             _voice_log(session_id, "deterministic", tool_calls=deterministic_calls)
+
+        # 3b) Urdu-first add-to-cart short-circuit.
+        # If the deterministic pass on the translated English text produced no
+        # add_to_cart calls (or the translation garbled the item name), try to
+        # extract the command directly from the raw Urdu transcript.  This fires
+        # when the user said something like "دیسی ڈیو کارٹ میں ڈال دو" whose
+        # translation came out as "Add desi dev cut in the order." — which the
+        # deterministic pass can't resolve to a real menu item.
+        elif _detect_urdu_add_to_cart_intent(transcript):
+            urdu_calls = _extract_urdu_add_to_cart(transcript, voice_strict=True)
+            if urdu_calls:
+                ai_response = SimpleNamespace(
+                    content=_action_reply_from_tools(urdu_calls, response_language),
+                    tool_calls=urdu_calls,
+                )
+                _voice_log(session_id, "urdu_direct_cart", tool_calls=urdu_calls)
+            else:
+                # Urdu-script add-to-cart detected but item lookup failed.
+                # Fall through to the LLM so it can attempt its own
+                # resolution — but mark that we MUST NOT let the last-resort
+                # conversational waiter fire (it gives unsolicited suggestions).
+                _voice_log(session_id, "urdu_cart_fallback_to_llm", transcript=transcript)
+                ai_response = SimpleNamespace(content="", tool_calls=[])
+                _urdu_cart_intent_detected = True
+
         elif _is_conversational_query(transcript, normalized_text, nlp):
             # ── Conversational waiter short-circuit ────────────
             # Taste / recommendation / temperature questions deserve a
@@ -2951,22 +3331,28 @@ async def chat_voice_endpoint(
         elif tool_calls:
             reply_text = _action_reply_from_tools(tool_calls, response_language)
         else:
-            # Last-resort: try waiter-style LLM before the canned domain
-            # reply so guests still get a natural answer.
-            convo = await run_in_threadpool(
-                _conversational_waiter_reply,
-                transcript,
-                normalized_text,
-                response_language,
-                history,
-            )
-            if convo and convo.get("reply"):
-                reply_text = convo["reply"]
-                if not menu_items:
-                    menu_items = convo.get("menu_items") or []
-                _voice_log(session_id, "conversational_fallback", matched_items=len(menu_items))
-            else:
+            # When we know this was an add-to-cart intent (Urdu-direct path
+            # tried and fell through) do NOT run the conversational waiter —
+            # it would give unsolicited food suggestions.
+            if _urdu_cart_intent_detected:
                 reply_text = _safe_domain_reply(response_language)
+            else:
+                # Last-resort: try waiter-style LLM before the canned domain
+                # reply so guests still get a natural answer.
+                convo = await run_in_threadpool(
+                    _conversational_waiter_reply,
+                    transcript,
+                    normalized_text,
+                    response_language,
+                    history,
+                )
+                if convo and convo.get("reply"):
+                    reply_text = convo["reply"]
+                    if not menu_items:
+                        menu_items = convo.get("menu_items") or []
+                    _voice_log(session_id, "conversational_fallback", matched_items=len(menu_items))
+                else:
+                    reply_text = _safe_domain_reply(response_language)
 
         _voice_log(
             session_id,

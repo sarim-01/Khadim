@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:khaadim/models/order.dart';
 import 'package:khaadim/screens/orders/order_history_screen.dart';
 import 'package:khaadim/services/order_service.dart';
+import 'package:khaadim/widgets/mic_button.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/widgets/voice_order_handler.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   final int orderId;
@@ -22,9 +25,28 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   Order? _order;
   Timer? _pollTimer;
 
+  late final VoiceOrderHandler _voiceHandler;
+
   @override
   void initState() {
     super.initState();
+    
+    _voiceHandler = VoiceOrderHandler();
+    _voiceHandler.init();
+    _voiceHandler.setNavCallbacks(
+      VoiceNavCallbacks(
+        switchTab: (_) {},
+        openMenuWithFilter: ({String? cuisine, String? category}) => Navigator.pop(context),
+        openCart: () => Navigator.pop(context),
+        openCheckout: ({String paymentMethod = 'COD'}) => Navigator.pop(context),
+        openOrders: () => Navigator.pop(context),
+        openFavourites: () => Navigator.pop(context),
+        openRecommendations: () => Navigator.pop(context),
+        openDealsWithFilter: ({String? cuisineFilter, String? servingFilter, int? highlightDealId}) => Navigator.pop(context),
+      ),
+    );
+    _voiceHandler.setCheckoutInterceptor(_handleVoiceTracking);
+
     _loadOrder();
     // Start polling every 5 seconds after the first full load
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollStatus());
@@ -33,7 +55,44 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _voiceHandler.dispose();
     super.dispose();
+  }
+
+  bool _handleVoiceTracking(String transcript) {
+    final t = transcript.toLowerCase().trim();
+
+    final isStatus = t.contains('status') ||
+        t.contains('time') ||
+        t.contains('kitni dair') ||
+        t.contains('waqt') ||
+        t.contains('kahan') ||
+        t.contains('order');
+
+    if (isStatus && _order != null) {
+      final timeStr = _displayTime(_order!.status, _order!.estimatedPrepTimeMinutes);
+      
+      String urduMsg = '';
+      if (_order!.status.toLowerCase() == 'completed') {
+        urduMsg = 'آپ کا آرڈر تیار ہے!';
+      } else if (_order!.status.toLowerCase() == 'ready') {
+        urduMsg = 'آپ کا آرڈر تیار ہے۔';
+      } else if (_order!.status.toLowerCase() == 'preparing' || _order!.status.toLowerCase() == 'in_kitchen') {
+        urduMsg = 'آپ کا آرڈر تیار ہو رہا ہے۔ تقریباً $timeStr لگیں گے۔';
+      } else {
+        urduMsg = 'تقریباً $timeStr باقی ہیں۔';
+      }
+
+      // Replace "mins" with "minute" for better Urdu TTS pronunciation
+      urduMsg = urduMsg.replaceAll('mins', 'منٹ').replaceAll('min', 'منٹ');
+
+      _voiceHandler.speakDirectly(urduMsg, lang: 'ur');
+      // trigger manual poll
+      _pollStatus();
+      return true;
+    }
+
+    return false;
   }
 
   /// Full reload — called on initState and manual refresh button.
@@ -200,11 +259,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: color.primary,
-        foregroundColor: color.onPrimary,
-        onPressed: () {},
-        child: const Icon(Icons.mic_none_rounded),
+      floatingActionButton: AnimatedBuilder(
+        animation: _voiceHandler,
+        builder: (_, __) => MicButton(
+          isRecording: _voiceHandler.isRecording,
+          isProcessing: _voiceHandler.isProcessing,
+          onPressDown: () => _voiceHandler.onMicDown(context),
+          onPressUp: () => _voiceHandler.onMicUp(context),
+          onCancel: _voiceHandler.onMicCancel,
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

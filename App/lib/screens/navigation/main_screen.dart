@@ -10,6 +10,8 @@ import 'package:khaadim/screens/cart/cart_screen.dart';
 import 'package:khaadim/widgets/mic_button.dart';
 import 'package:khaadim/widgets/voice_order_handler.dart';
 import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/screens/support/favorites_screen.dart';
+
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -37,9 +39,26 @@ class _MainScreenState extends State<MainScreen> {
     _voiceHandler.setNavCallbacks(
       VoiceNavCallbacks(
         switchTab: (index) => _onTabTapped(index),
+
+        // Voice: "show BBQ menu" / "show desi items" / "show drinks"
+        // Push a pre-filtered MenuScreen so the cuisine/category chips are
+        // already selected when the screen opens.
         openMenuWithFilter: ({String? cuisine, String? category}) {
-          _onTabTapped(1);
+          if (cuisine != null || category != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MenuScreen(
+                  initialCuisine: cuisine,
+                  initialCategory: category,
+                ),
+              ),
+            );
+          } else {
+            _onTabTapped(1);
+          }
         },
+
         openCart: () {
           Navigator.push(
             context,
@@ -57,17 +76,38 @@ class _MainScreenState extends State<MainScreen> {
           Navigator.pushNamed(context, '/order_history');
         },
         openFavourites: () {
-          Navigator.pushNamed(context, '/profile');
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const FavoritesScreen()),
+          );
         },
         openRecommendations: () {
           _onTabTapped(0);
         },
+
+        // Voice: "show BBQ deals" / "show deals for 2 people"
+        // Push a pre-filtered OffersScreen with cuisine + serving chips set.
         openDealsWithFilter: ({
           String? cuisineFilter,
           String? servingFilter,
           int? highlightDealId,
         }) {
-          _onTabTapped(2);
+          if (cuisineFilter != null ||
+              servingFilter != null ||
+              highlightDealId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OffersScreen(
+                  initialCuisine: cuisineFilter,
+                  initialServing: servingFilter,
+                  highlightDealId: highlightDealId,
+                ),
+              ),
+            );
+          } else {
+            _onTabTapped(2);
+          }
         },
       ),
     );

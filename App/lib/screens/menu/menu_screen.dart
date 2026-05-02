@@ -7,6 +7,7 @@ import 'package:khaadim/services/menu_service.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/widgets/kiosk_voice_fab.dart';
+import 'package:khaadim/providers/favourites_notifier.dart';
 import 'package:provider/provider.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/screens/cart/cart_screen.dart';
@@ -418,6 +419,22 @@ class _MenuItemCardState extends State<_MenuItemCard> {
       _favLoading = false;
     } else {
       _loadFavStatus();
+      // Listen to voice-driven favourite changes
+      FavouritesNotifier.instance.addListener(_onNotifierChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    FavouritesNotifier.instance.removeListener(_onNotifierChanged);
+    super.dispose();
+  }
+
+  void _onNotifierChanged() {
+    if (!mounted) return;
+    final newFav = FavouritesNotifier.instance.isItemFav(widget.item.itemId);
+    if (newFav != _isFav) {
+      setState(() => _isFav = newFav);
     }
   }
 
@@ -427,8 +444,11 @@ class _MenuItemCardState extends State<_MenuItemCard> {
         itemId: widget.item.itemId,
       );
       if (mounted) {
+        final isFav = res['is_favourite'] == true;
+        // Keep notifier in sync with server state
+        FavouritesNotifier.instance.updateItem(widget.item.itemId, added: isFav);
         setState(() {
-          _isFav = res['is_favourite'] == true;
+          _isFav = isFav;
           _favLoading = false;
         });
       }
@@ -446,6 +466,8 @@ class _MenuItemCardState extends State<_MenuItemCard> {
       );
       if (!mounted) return;
       final added = res['action'] == 'added';
+      // Keep the global notifier in sync for voice-driven cards too
+      FavouritesNotifier.instance.updateItem(widget.item.itemId, added: added);
       setState(() => _isFav = added);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content:

@@ -7,6 +7,9 @@ import 'package:khaadim/services/payment_service.dart';
 import 'package:khaadim/services/auth_service.dart';
 import 'package:khaadim/screens/payments/payment_method_screen.dart';
 import 'package:khaadim/screens/orders/order_confirmation_screen.dart';
+import 'package:khaadim/widgets/mic_button.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/widgets/voice_order_handler.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final String initialPaymentMethod;
@@ -33,6 +36,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   static const double _deliveryFee = 150;
   static const double _taxRate = 0.05;
 
+  // ── Voice ─────────────────────────────────────────────────────
+  late final VoiceOrderHandler _voiceHandler;
+
   @override
   void initState() {
     super.initState();
@@ -43,12 +49,122 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _selectedPaymentLabel =
         _selectedPaymentMethod == 'CARD' ? 'Card' : 'Cash on Delivery';
 
+    // ── Wire voice handler ─────────────────────────────────────
+    _voiceHandler = VoiceOrderHandler();
+    _voiceHandler.init();
+    _voiceHandler.setNavCallbacks(
+      VoiceNavCallbacks(
+        switchTab: (_) {},
+        openMenuWithFilter: ({String? cuisine, String? category}) =>
+            Navigator.pop(context),
+        openCart: () => Navigator.pop(context),
+        openCheckout: ({String paymentMethod = 'COD'}) {
+          // Already on checkout — just apply the payment method.
+          _applyPaymentMethod(paymentMethod);
+        },
+        openOrders: () => Navigator.pop(context),
+        openFavourites: () => Navigator.pop(context),
+        openRecommendations: () => Navigator.pop(context),
+        openDealsWithFilter: ({
+          String? cuisineFilter,
+          String? servingFilter,
+          int? highlightDealId,
+        }) =>
+            Navigator.pop(context),
+      ),
+    );
+    // Intercept raw transcripts to handle checkout-specific commands
+    // BEFORE the generic voice pipeline gets them.
+    _voiceHandler.setCheckoutInterceptor(_handleVoiceCheckout);
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final cart = context.read<CartProvider>();
       if (cart.cartId != null) {
         await cart.sync();
       }
       _loadProfileAddress();
+    });
+  }
+
+  @override
+  void dispose() {
+    _voiceHandler.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
+  // ── Checkout voice interceptor ─────────────────────────────────
+  // Returns true if the command was fully handled here (prevents the
+  // generic voice pipeline from also speaking a reply).
+  bool _handleVoiceCheckout(String transcript) {
+    final t = transcript.toLowerCase().trim();
+
+    // ── Payment method selection ───────────────────────────────
+    final isCod = t.contains('cash') ||
+        t.contains('cod') ||
+        t.contains('کیش') ||
+        t.contains('نقد') ||
+        t.contains('ڈلیوری پر') ||
+        t.contains('گھر پر') ||
+        t.contains('delivery par') ||
+        t.contains('cash on delivery');
+
+    final isCard = t.contains('card') ||
+        t.contains('کارڈ') ||
+        t.contains('online') ||
+        t.contains('digital') ||
+        t.contains('credit') ||
+        t.contains('debit');
+
+    if (isCod && !isCard) {
+      _applyPaymentMethod('COD');
+      _voiceHandler.speakDirectly(
+        'کیش آن ڈیلیوری منتخب کر لیا۔',
+        lang: 'ur',
+      );
+      return true;
+    }
+
+    if (isCard && !isCod) {
+      _applyPaymentMethod('CARD');
+      _voiceHandler.speakDirectly(
+        'کارڈ پیمنٹ منتخب کر لی۔',
+        lang: 'ur',
+      );
+      // Push the card selector so user can pick a card.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _selectPaymentMethod();
+      });
+      return true;
+    }
+
+    // ── Place order ────────────────────────────────────────────
+    final isPlaceOrder = t.contains('place order') ||
+        t.contains('order karo') ||
+        t.contains('order kar do') ||
+        t.contains('آرڈر') ||
+        t.contains('confirm') ||
+        t.contains('کنفرم') ||
+        t.contains('پیسے ادا') ||
+        t.contains('submit');
+
+    if (isPlaceOrder) {
+      _voiceHandler.speakDirectly('آرڈر دے رہے ہیں۔', lang: 'ur');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_placingOrder) _placeOrder();
+      });
+      return true;
+    }
+
+    return false; // let the generic pipeline handle it
+  }
+
+  void _applyPaymentMethod(String method) {
+    setState(() {
+      _selectedPaymentMethod = method.toUpperCase() == 'CARD' ? 'CARD' : 'COD';
+      _selectedCardId = null;
+      _selectedPaymentLabel =
+          _selectedPaymentMethod == 'CARD' ? 'Card' : 'Cash on Delivery';
     });
   }
 
@@ -65,12 +181,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (_) {
       // Ignore if it fails, let them type it manually
     }
-  }
-
-  @override
-  void dispose() {
-    _address.dispose();
-    super.dispose();
   }
 
   Future<void> _selectPaymentMethod() async {
@@ -283,11 +393,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             onPressed: _placingOrder ? null : () => Navigator.pop(context),
           ),
         ),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: color.primary,
-          foregroundColor: color.onPrimary,
-          onPressed: _placingOrder ? null : () {},
-          child: const Icon(Icons.mic_none_rounded),
+        // ── Voice mic FAB ─────────────────────────────────────────
+        floatingActionButton: AnimatedBuilder(
+          animation: _voiceHandler,
+          builder: (_, __) => MicButton(
+            isRecording: _voiceHandler.isRecording,
+            isProcessing: _voiceHandler.isProcessing,
+            onPressDown: () => _voiceHandler.onMicDown(context),
+            onPressUp: () => _voiceHandler.onMicUp(context),
+            onCancel: _voiceHandler.onMicCancel,
+          ),
         ),
         body: AbsorbPointer(
           absorbing: _placingOrder,
@@ -302,6 +417,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // ── Voice hint banner ─────────────────────────
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: color.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: color.primary.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.mic_none_rounded,
+                              color: color.primary, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'آواز سے کہیں: "کیش آن ڈیلیوری" یا "کارڈ سے پیمنٹ" یا "آرڈر کرو"',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: color.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     _buildSectionCard(
                       context,
                       title: "Delivery Address",
@@ -325,59 +470,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       title: "Payment Method",
                       child: Column(
                         children: [
-                          InkWell(
-                            onTap: _placingOrder ? null : _selectPaymentMethod,
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: color.primary.withValues(alpha: 0.6),
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _selectedPaymentMethod == 'COD'
-                                        ? Icons.local_shipping_outlined
-                                        : Icons.credit_card_outlined,
-                                    color: color.primary,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _selectedPaymentLabel,
-                                          style: theme.textTheme.bodyLarge
-                                              ?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _selectedPaymentMethod == 'COD'
-                                              ? 'Pay in cash when your order arrives'
-                                              : 'Tap to change payment method',
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                            color: theme.hintColor,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.chevron_right,
-                                    color: color.primary,
-                                  ),
-                                ],
-                              ),
-                            ),
+                          _PaymentChip(
+                            label: 'Cash on Delivery',
+                            icon: Icons.local_shipping_outlined,
+                            selected: _selectedPaymentMethod == 'COD',
+                            onTap: _placingOrder
+                                ? null
+                                : () => _applyPaymentMethod('COD'),
+                          ),
+                          const SizedBox(height: 8),
+                          _PaymentChip(
+                            label: _selectedPaymentMethod == 'CARD' &&
+                                    _selectedCardId != null
+                                ? 'Card Selected'
+                                : 'Pay by Card',
+                            icon: Icons.credit_card_outlined,
+                            selected: _selectedPaymentMethod == 'CARD',
+                            onTap: _placingOrder
+                                ? null
+                                : () async {
+                                    _applyPaymentMethod('CARD');
+                                    await _selectPaymentMethod();
+                                  },
                           ),
                         ],
                       ),
@@ -449,7 +563,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   const SizedBox(width: 12),
                                   Text(
                                     _statusText,
-                                    style: const TextStyle(color: Colors.white),
+                                    style:
+                                        const TextStyle(color: Colors.white),
                                   ),
                                 ],
                               )
@@ -490,6 +605,67 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 12),
             child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Payment method visual chip ─────────────────────────────────────────────
+class _PaymentChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _PaymentChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.primary.withValues(alpha: 0.12)
+              : color.surface,
+          border: Border.all(
+            color: selected
+                ? color.primary
+                : color.outline.withValues(alpha: 0.4),
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon,
+                color: selected ? color.primary : theme.hintColor, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight:
+                      selected ? FontWeight.w700 : FontWeight.normal,
+                  color: selected ? color.primary : theme.hintColor,
+                ),
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_circle_rounded, color: color.primary, size: 20),
           ],
         ),
       ),

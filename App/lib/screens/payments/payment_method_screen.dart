@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'add_payment_screen.dart';
 import 'package:khaadim/services/card_service.dart';
+import 'package:khaadim/widgets/mic_button.dart';
+import 'package:khaadim/widgets/voice_nav_callbacks.dart';
+import 'package:khaadim/widgets/voice_order_handler.dart';
 
 class PaymentMethodsScreen extends StatefulWidget {
   const PaymentMethodsScreen({super.key});
@@ -16,10 +19,98 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
   String _selectedMethod = 'COD';
   int? _selectedCardId;
 
+  late final VoiceOrderHandler _voiceHandler;
+
   @override
   void initState() {
     super.initState();
+    
+    _voiceHandler = VoiceOrderHandler();
+    _voiceHandler.init();
+    _voiceHandler.setNavCallbacks(
+      VoiceNavCallbacks(
+        switchTab: (_) {},
+        openMenuWithFilter: ({String? cuisine, String? category}) => Navigator.pop(context),
+        openCart: () => Navigator.pop(context),
+        openCheckout: ({String paymentMethod = 'COD'}) => Navigator.pop(context),
+        openOrders: () => Navigator.pop(context),
+        openFavourites: () => Navigator.pop(context),
+        openRecommendations: () => Navigator.pop(context),
+        openDealsWithFilter: ({String? cuisineFilter, String? servingFilter, int? highlightDealId}) => Navigator.pop(context),
+      ),
+    );
+    _voiceHandler.setCheckoutInterceptor(_handleVoicePayment);
+    
     _loadCards();
+  }
+
+  @override
+  void dispose() {
+    _voiceHandler.dispose();
+    super.dispose();
+  }
+
+  bool _handleVoicePayment(String transcript) {
+    final t = transcript.toLowerCase().trim();
+
+    final isNewCard = t.contains('new card') ||
+        t.contains('naya card') ||
+        t.contains('add card') ||
+        t.contains('نیا کارڈ');
+
+    final isCard = t.contains('card') ||
+        t.contains('کارڈ') ||
+        t.contains('online');
+
+    final isCod = t.contains('cash') ||
+        t.contains('cod') ||
+        t.contains('کیش') ||
+        t.contains('نقد');
+
+    if (isNewCard) {
+      _voiceHandler.speakDirectly('نیا کارڈ شامل کریں۔', lang: 'ur');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openAddCardScreen();
+      });
+      return true;
+    }
+
+    if (isCard) {
+      if (_cards.isNotEmpty) {
+        _voiceHandler.speakDirectly('کارڈ منتخب کر لیا۔', lang: 'ur');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _selectedMethod = 'CARD';
+              _selectedCardId = _cards.first['card_id'] as int;
+            });
+            _continueWithSelection();
+          }
+        });
+      } else {
+        _voiceHandler.speakDirectly('نیا کارڈ شامل کریں۔', lang: 'ur');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openAddCardScreen();
+        });
+      }
+      return true;
+    }
+
+    if (isCod) {
+      _voiceHandler.speakDirectly('کیش آن ڈیلیوری منتخب کر لیا۔', lang: 'ur');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedMethod = 'COD';
+            _selectedCardId = null;
+          });
+          _continueWithSelection();
+        }
+      });
+      return true;
+    }
+
+    return false;
   }
 
   Future<void> _loadCards() async {
@@ -273,11 +364,15 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         appBar: AppBar(
           title: const Text("Payment Methods"),
         ),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: theme.colorScheme.primary,
-          foregroundColor: Colors.black,
-          onPressed: () {},
-          child: const Icon(Icons.mic_none_rounded),
+        floatingActionButton: AnimatedBuilder(
+          animation: _voiceHandler,
+          builder: (_, __) => MicButton(
+            isRecording: _voiceHandler.isRecording,
+            isProcessing: _voiceHandler.isProcessing,
+            onPressDown: () => _voiceHandler.onMicDown(context),
+            onPressUp: () => _voiceHandler.onMicUp(context),
+            onCancel: _voiceHandler.onMicCancel,
+          ),
         ),
         body: Padding(
           padding: const EdgeInsets.all(16),
