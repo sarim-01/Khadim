@@ -35,6 +35,12 @@ except Exception as e:
     TTS_ENABLED = False
 
 try:
+    from voice.intent_pipeline import plan_restaurant_tool_calls
+except Exception:
+    def plan_restaurant_tool_calls(calls):
+        return list(calls or [])
+
+try:
     from chat.chat_agent import get_ai_response, llm as ITEM_NAME_LLM
     from langchain_core.messages import HumanMessage
 except Exception:
@@ -47,6 +53,10 @@ from voice.urdu_translator import (
     detect_info_intent,
     _extract_deal_items,
     _build_deal_query,
+)
+from voice.cart_voice_heuristics import (
+    wants_clear_entire_cart as _wants_clear_entire_cart,
+    text_requests_order_tracking as _text_requests_order_tracking,
 )
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -83,6 +93,12 @@ print("DB URL = ", os.getenv("DATABASE_URL"))
 logger = logging.getLogger("voice_nlp")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+# Voice flow should stay deterministic unless explicitly enabled.
+VOICE_LLM_ENABLED = (
+    os.getenv("VOICE_LLM_ENABLED", "0").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 
 _SESSION_MEMORY: Dict[str, Dict[str, Any]] = {}
 _HISTORY_WINDOW = 10
@@ -147,9 +163,12 @@ def _extract_keywords_intent(text: str) -> Dict[str, Any]:
         if m3:
             people = _PEOPLE_WORD_MAP.get(m3.group(1))
 
-    if any(k in t for k in ["deal", "deals"]):
+    mentions_deal = any(k in t for k in ["deal", "deals"])
+    mentions_menu = any(k in t for k in ["menu", "item", "dish"])
+
+    if mentions_deal:
         intent = "search_deal"
-    elif any(k in t for k in ["menu", "item", "dish"]):
+    elif mentions_menu:
         intent = "search_menu"
     elif any(k in t for k in ["place order", "confirm order", "checkout"]):
         intent = "place_order"
@@ -162,6 +181,13 @@ def _extract_keywords_intent(text: str) -> Dict[str, Any]:
             "cuisine": cuisine,
             "people": people,
             "query_text": text,
+        },
+        # Signals for multi-topic utterances (e.g. "show deals and menu for fast food").
+        # Primary [intent] still picks one branch for routing; orchestration uses these
+        # to merge DB results when both topics appear in the same sentence.
+        "signals": {
+            "mentions_deal": mentions_deal,
+            "mentions_menu": mentions_menu,
         },
     }
 
@@ -471,6 +497,76 @@ def _build_deal_tool_calls(nlp: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [{"name": "search_deal", "args": args}]
 
 
+def _want_menu_and_deals_together(nlp: Dict[str, Any]) -> bool:
+    """True when the user mixed menu + deal language in one utterance (real-life composite queries)."""
+    sig = (nlp or {}).get("signals") or {}
+    return bool(sig.get("mentions_deal") and sig.get("mentions_menu"))
+
+
+def _dedupe_menu_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    for r in rows or []:
+        iid = r.get("item_id")
+        if iid in seen:
+            continue
+        seen.add(iid)
+        out.append(r)
+    return out
+
+
+def _dedupe_deal_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    for r in rows or []:
+        did = r.get("deal_id")
+        if did in seen:
+            continue
+        seen.add(did)
+        out.append(r)
+    return out
+
+
+def _combined_search_query(nlp: Dict[str, Any], normalized_text: str) -> str:
+    kws = (nlp or {}).get("keywords") or {}
+    c = (kws.get("cuisine") or "").strip()
+    if c:
+        return c
+    return (normalized_text or "").strip()
+
+
+def _merge_menu_and_deal_results(
+    nlp: Dict[str, Any],
+    normalized_text: str,
+    menu_items: List[Dict[str, Any]],
+    deals: List[Dict[str, Any]],
+    tool_calls: List[Dict[str, Any]],
+) -> tuple:
+    """If the utterance referenced both deals and the menu, run the second search and merge."""
+    if not _want_menu_and_deals_together(nlp):
+        return menu_items, deals, tool_calls
+
+    q = _combined_search_query(nlp, normalized_text)
+    if not q:
+        return menu_items, deals, tool_calls
+
+    intent = (nlp or {}).get("intent") or ""
+    tools = list(tool_calls or [])
+
+    if intent == "search_deal" and q:
+        extra = fetch_menu_items_by_name(q)
+        menu_items = _dedupe_menu_rows((menu_items or []) + extra)
+        if not any((c or {}).get("name") == "search_menu" for c in tools):
+            tools.append({"name": "search_menu", "args": {"query": str(q)}})
+    elif intent == "search_menu" and q:
+        extra_deals = _search_deals_from_nlp(nlp, normalized_text)
+        deals = _dedupe_deal_rows((deals or []) + extra_deals)
+        if not any((c or {}).get("name") == "search_deal" for c in tools):
+            tools.extend(_build_deal_tool_calls(nlp))
+
+    return menu_items, deals, tools
+
+
 def _clean_item_name(raw: str) -> str:
     name = re.sub(r"\b(to|into|in|my|the|a|an|cart|please)\b", " ", raw, flags=re.IGNORECASE)
     # ASR junk tails — "add cola in the cart" / "kula in the bowl" leave
@@ -774,6 +870,21 @@ _QTY_WORDS = {
     "eight": 8,
     "nine": 9,
     "ten": 10,
+    # Roman Urdu number words used in kiosk utterances.
+    "ek": 1,
+    "do": 2,
+    "teen": 3,
+    "char": 4,
+    "chaar": 4,
+    "panch": 5,
+    "paanch": 5,
+    "che": 6,
+    "chay": 6,
+    "saat": 7,
+    "aath": 8,
+    "ath": 8,
+    "nau": 9,
+    "das": 10,
 }
 
 
@@ -786,11 +897,14 @@ def _split_add_item_chunks(raw: str) -> List[str]:
     protected = {
         "fish and chips": "fish __and__ chips",
         "mac and cheese": "mac __and__ cheese",
+        "sweet and sour": "sweet __and__ sour",
     }
     for src, dst in protected.items():
         text_value = text_value.replace(src, dst)
 
     text_value = text_value.replace(" & ", " and ").replace(" plus ", " and ")
+    # Roman Urdu connector in multi-item add utterances ("ek X aur do Y").
+    text_value = re.sub(r"\s+aur\s+", " and ", text_value, flags=re.IGNORECASE)
     text_value = re.sub(r"\s*[,،]\s*", " and ", text_value)
 
     chunks = [
@@ -861,6 +975,8 @@ _URDU_ITEM_WORD_MAP: Dict[str, str] = {
 _URDU_ADD_PATTERNS: List[str] = [
     # X کارٹ/کاٹ میں ڈال/شامل دو/دیں
     r"^(.+?)\s+(?:کارٹ|کاٹ|کارڈ)\s+میں\s+(?:ڈال|شامل|add|ایڈ)\s*(?:دو|دیں|دیجیے|کریں|کرو|کر\s*دو)?\s*$",
+    # Mixed Latin "cart" + Urdu postposition + add (Whisper often does this)
+    r"^(.+?)\s+cart\s+میں\s+(?:add|ایڈ)\s*(?:کر\s*دو|کرو|کریں)?\s*$",
     # X ڈال دو / شامل کرو
     r"^(.+?)\s+(?:ڈال\s*دو|ڈال\s*دیں|شامل\s*کرو|شامل\s*کریں|شامل\s*کر\s*دو)\s*$",
     # X add karo/kar do/krdo
@@ -916,16 +1032,28 @@ def _extract_urdu_add_to_cart(
 
     item_phrase_ur: Optional[str] = None
     for pat in _URDU_ADD_PATTERNS:
-        m = re.match(pat, t)
+        m = re.match(pat, t, flags=re.IGNORECASE)
         if m:
             item_phrase_ur = m.group(1).strip()
             break
     if not item_phrase_ur:
         return []
 
+    # Do not split "sweet and sour" / "fish and chips" on the inner " and ".
+    _and_shields = (
+        ("sweet and sour", "sweet __and__ sour"),
+        ("fish and chips", "fish __and__ chips"),
+        ("mac and cheese", "mac __and__ cheese"),
+    )
+    _shielded = item_phrase_ur
+    for src, dst in _and_shields:
+        _shielded = re.sub(rf"(?i){re.escape(src)}", dst, _shielded)
+
     # ── Split on Urdu comma (،), regular comma, and اور / and ───────────
-    chunks = re.split(r"\s*[،,]\s*|\s+اور\s+|\s+and\s+", item_phrase_ur)
+    chunks = re.split(r"\s*[،,]\s*|\s+اور\s+|\s+and\s+", _shielded, flags=re.IGNORECASE)
     chunks = [c.strip() for c in chunks if c and c.strip()]
+    for _src, _dst in _and_shields:
+        chunks = [c.replace(_dst, _src) for c in chunks]
     if not chunks:
         return []
 
@@ -975,14 +1103,20 @@ def _detect_urdu_add_to_cart_intent(raw_transcript: str) -> bool:
     t = (raw_transcript or "").strip()
     if not t:
         return False
+    t_lower = t.lower()
     # Only Urdu-SCRIPT cart verbs — do NOT match Roman "cart" or "add karo".
     urdu_signals = [
-        "کارٹ میں", "کاٹ میں",   # Urdu script only
+        "کارٹ میں", "کاٹ میں",
+        "cart میں", "cart mein",  # mixed Latin+Urdu (kiosk ASR)
         "ڈال دو", "ڈال دیں",
-        "شامل کرو", "شامل کریں", "شامل کر دو",
+        "شامل کرو", "شامل کریں", "شامل کر \u062f\u0648",
         "ایڈ کرو", "ایڈ کریں",
     ]
     for sig in urdu_signals:
+        if re.search(r"[a-z]", sig, flags=re.IGNORECASE):
+            if sig.lower() in t_lower:
+                return True
+            continue
         if sig in t:
             return True
     return False
@@ -1119,21 +1253,32 @@ def _extract_remove_cart_item_text(t: str) -> Optional[str]:
     t = (t or "").strip().lower()
     if not t:
         return None
+    # Translator noise guard: "kar 2" should behave like "kar do".
+    t = re.sub(r"\bkar\s*2\b", "kar do", t, flags=re.IGNORECASE)
+    # ASR typo guard: "card mein/se" in cart edits usually means "cart".
+    t = re.sub(r"\bcard(?=\s+(?:mein|me|mai|se)\b)", "cart", t, flags=re.IGNORECASE)
 
-    # 1) remove X [krdo]
-    m = re.search(r"\bremove\s+(.+)$", t)
-    if m:
-        rest = _strip_trailing_remove_verbs(m.group(1))
-        return _strip_leading_qty_token(rest)
+    def _clean_item_phrase(s: str) -> str:
+        s = _strip_leading_qty_token(_strip_trailing_remove_verbs(s))
+        # Drop transport/payment noise that should never be part of the item.
+        s = re.sub(r"\b(?:cart|card)\b", " ", s, flags=re.IGNORECASE)
+        s = re.sub(r"\b(?:payment|pay)\b", " ", s, flags=re.IGNORECASE)
+        s = re.sub(r"\b(?:mein|me|mai|se|ko)\b", " ", s, flags=re.IGNORECASE)
+        s = re.sub(r"\s+", " ", s).strip(" .,!?")
+        return s
 
-    # 2) X remove [krdo] — most common Roman Urdu order
+    # 1) X remove [krdo] — most common Roman Urdu order
     m = re.search(
         r"^(.+?)\s+remove(?:\s+(?:krdo|kardo|kar do|karo|do|please|lagao))?\s*$",
         t,
     )
     if m:
-        rest = _strip_trailing_remove_verbs(m.group(1))
-        return _strip_leading_qty_token(rest)
+        return _clean_item_phrase(m.group(1))
+
+    # 2) remove X [krdo] (imperative at sentence start)
+    m = re.search(r"^(?:please\s+)?remove\s+(.+)$", t)
+    if m:
+        return _clean_item_phrase(m.group(1))
 
     # 3) cart se X nikalo / hatao
     m = re.search(
@@ -1141,7 +1286,7 @@ def _extract_remove_cart_item_text(t: str) -> Optional[str]:
         t,
     )
     if m:
-        return _strip_leading_qty_token(_strip_trailing_remove_verbs(m.group(1)))
+        return _clean_item_phrase(m.group(1))
 
     # 4) X nikalo / X hata do / X nikal do (verb at end)
     m = re.search(
@@ -1149,12 +1294,12 @@ def _extract_remove_cart_item_text(t: str) -> Optional[str]:
         t,
     )
     if m:
-        return _strip_leading_qty_token(_strip_trailing_remove_verbs(m.group(1)))
+        return _clean_item_phrase(m.group(1))
 
     # 5) delete / discard X
     m = re.search(r"\b(?:delete|discard)\s+(.+)$", t)
     if m:
-        return _strip_leading_qty_token(_strip_trailing_remove_verbs(m.group(1)))
+        return _clean_item_phrase(m.group(1))
 
     return None
 
@@ -1231,6 +1376,13 @@ def _deterministic_chat_tool_calls(
     t = (text or "").strip().lower()
     if not t:
         return None
+    t = re.sub(r"[\.\!\?۔]+$", "", t).strip()
+    t_for_clear = re.sub(
+        r"\bcard(?=\s+(?:mein|me|mai|se|میں|سے)\b)",
+        "cart",
+        t,
+        flags=re.IGNORECASE,
+    )
 
     kws = (nlp or {}).get("keywords", {})
     cuisine = (kws.get("cuisine") or "").strip()
@@ -1244,12 +1396,91 @@ def _deterministic_chat_tool_calls(
     ):
         return [{"name": "create_custom_deal", "args": {"query": text}}]
 
+    # Delivery wording often says "package" instead of "deal".
+    if (
+        any(k in t for k in ("package", "pkg"))
+        and any(k in t for k in ("show", "dikhao", "price", "rate", "available"))
+    ):
+        q = str((kws.get("query_text") or text)).strip()
+        if q:
+            return [{"name": "search_deal", "args": {"query": q}}]
+        return [{"name": "search_deal", "args": {}}]
+
     if nlp.get("intent") == "search_deal":
         return None
+
+    # Clear cart must win before the search_menu NLP shortcut mislabels removals.
+    if (
+        _wants_clear_entire_cart(t)
+        or _wants_clear_entire_cart(text)
+        or _wants_clear_entire_cart(t_for_clear)
+    ):
+        return [{"name": "clear_cart", "args": {}}]
+
+    # Order ETA / tracking before search_menu for the same reason.
+    if _text_requests_order_tracking(t) or _text_requests_order_tracking(text):
+        return [{"name": "get_order_status", "args": {}}]
+
+    # "What is in my cart?" (Urdu/Roman/English) must not be routed as menu search.
+    _show_cart_needles = (
+        "open cart",
+        "show cart",
+        "cart dikhao",
+        "cart dikhado",
+        "my cart",
+        "meri cart",
+        "mere cart",
+        "cart mein kya",
+        "cart me kya",
+        "cart mai kya",
+        "what in my cart",
+        "what is in my cart",
+        "items in my cart",
+        "items in cart",
+        "کارٹ میں کیا",
+        "cart میں کیا",
+    )
+    if any(k in t for k in _show_cart_needles):
+        return [{"name": "show_cart", "args": {}}]
+
+    # Natural taste/craving asks (Urdu + Roman) should map deterministically.
+    if any(k in t for k in ("میٹھا", "میٹھی", "meetha", "meethi", "sweet", "dessert")):
+        return [{"name": "search_menu", "args": {"query": "sweet"}}]
+    if any(k in t for k in ("spicy", "tikha", "teekha", "chatpata", "masaledar", "تیکھا", "مسالے")):
+        return [{"name": "search_menu", "args": {"query": "spicy"}}]
+    if any(k in t for k in ("mild", "light", "halka", "halki", "healthy", "diet", "ہلکا", "ہیلتھی")):
+        return [{"name": "search_menu", "args": {"query": "light"}}]
+
+    # Weather/cold-drink asks in Urdu/Roman often get normalized as generic
+    # "item show". Route them to drinks instead of empty search_menu results.
+    if any(k in t for k in ("thanda", "ٹھنڈا", "cold", "chilled", "گرمی")) and any(
+        k in t for k in ("drink", "item", "show", "bata", "بتا", "recommend", "suggest")
+    ):
+        return [{"name": "search_menu", "args": {"query": "drinks"}}]
 
     if nlp.get("intent") == "search_menu":
         query = cuisine or (kws.get("query_text") or text)
         return [{"name": "search_menu", "args": {"query": str(query)}}]
+
+    # Recommendation/discovery utterances with cuisine should open filtered menu.
+    # Example: "mujhe chinese mein acha khana dikhao".
+    if cuisine and any(
+        k in t
+        for k in (
+            "suggest",
+            "recommend",
+            "show",
+            "dikhao",
+            "dikhado",
+            "khana",
+            "khaane",
+            "eat",
+            "eating",
+            "for show",
+        )
+    ):
+        if not any(k in t for k in ("deal", "ڈیل", "combo", "bundle")):
+            return [{"name": "search_menu", "args": {"query": str(cuisine)}}]
 
     if any(k in t for k in ["waiter", "call waiter", "need waiter", "service please", "waiter please", "bill waiter"]):
         for_cash = any(k in t for k in ["cash bill", "cash payment", "pay cash"])
@@ -1257,6 +1488,48 @@ def _deterministic_chat_tool_calls(
         if for_cash:
             args["for_cash_payment"] = "true"
         return [{"name": "call_waiter", "args": args}]
+
+    # Cart edit: change quantity before remove before add (avoids greedy 'add' matches).
+    cq = _extract_change_quantity_args(t)
+    if cq:
+        item_phrase, qty_str = cq
+        item = _resolve_cart_item_name(item_phrase, voice_strict=voice_strict)
+        if item:
+            return [
+                {
+                    "name": "change_quantity",
+                    "args": {"item_name": item, "quantity": str(qty_str)},
+                }
+            ]
+
+    remove_phrase = _extract_remove_cart_item_text(t)
+    if remove_phrase:
+        # Whole-cart phrasing should clear cart, not fuzzy-match an item.
+        if any(
+            k in remove_phrase
+            for k in ("sab kuch", "sab", "all", "items", "sare", "saare", "saari", "tamam", "پورا", "سارا")
+        ):
+            return [{"name": "clear_cart", "args": {}}]
+        item = _resolve_cart_item_name(remove_phrase, voice_strict=voice_strict)
+        if item:
+            # Safety rail: never remove a random fuzzy item in strict voice mode.
+            if voice_strict:
+                phrase_clean = _clean_item_name(remove_phrase)
+                sim = _similarity(phrase_clean, item)
+                phrase_tokens = {
+                    tok for tok in re.findall(r"[a-z]+", phrase_clean.lower())
+                    if len(tok) >= 3 and tok not in {"cart", "card", "payment", "remove"}
+                }
+                item_tokens = {
+                    tok for tok in re.findall(r"[a-z]+", item.lower())
+                    if len(tok) >= 3
+                }
+                if phrase_tokens and not (phrase_tokens & item_tokens) and sim < 0.90:
+                    item = ""
+                elif sim < 0.80:
+                    item = ""
+        if item:
+            return [{"name": "remove_from_cart", "args": {"item_name": item}}]
 
     # Payment intent detection.
     # Broadened so "mujhe payment karni hai" / "payment karna hai" /
@@ -1287,9 +1560,10 @@ def _deterministic_chat_tool_calls(
         k in t for k in [
             "cash payment", "pay by cash", "cash se pay", "cash se payment",
             "by cash", "cash me pay", "cash mein pay",
+            "cod", "cash on delivery",
         ]
     ) or (
-        any(k in t for k in ["cash", "naqd", "naqad"])
+        any(k in t for k in ["cash", "naqd", "naqad", "cod", "cash on delivery"])
         and any(k in t for k in ["pay", "payment"])
     )
     _mentions_payment = (
@@ -1300,8 +1574,11 @@ def _deterministic_chat_tool_calls(
             " payment" in f" {t} " or t.startswith("payment")
         )
     )
-    if _mentions_payment:
-        if _has_explicit_card:
+    _removeish = any(k in t for k in ["remove", "nikal", "hata", "ریمو", "نکال", "ہٹا", "delete", "discard"])
+    if _mentions_payment and not _removeish:
+        if _has_explicit_card and _has_explicit_cash:
+            method = "ask"
+        elif _has_explicit_card:
             method = "card"
         elif _has_explicit_cash:
             method = "cash"
@@ -1312,30 +1589,101 @@ def _deterministic_chat_tool_calls(
     if "my orders" in t or "go to orders" in t or "open orders" in t:
         return [{"name": "navigate_to", "args": {"screen": "orders"}}]
 
-    if "open cart" in t or "show cart" in t:
+    # Order tracking (Roman Urdu / Hinglish) — duplicated heuristics for text
+    # paths that skipped the earlier block (e.g. mixed casing).
+    if _text_requests_order_tracking(t):
+        return [{"name": "get_order_status", "args": {}}]
+
+    if (
+        "open cart" in t
+        or "show cart" in t
+        or "cart dikhao" in t
+        or "cart dikhado" in t
+    ):
         return [{"name": "show_cart", "args": {}}]
 
-    # Cart edit: change quantity before remove before add (avoids greedy 'add' matches).
-    cq = _extract_change_quantity_args(t)
-    if cq:
-        item_phrase, qty_str = cq
-        item = _resolve_cart_item_name(item_phrase, voice_strict=voice_strict)
-        if item:
-            return [
-                {
-                    "name": "change_quantity",
-                    "args": {"item_name": item, "quantity": str(qty_str)},
-                }
-            ]
-
-    remove_phrase = _extract_remove_cart_item_text(t)
-    if remove_phrase:
-        item = _resolve_cart_item_name(remove_phrase, voice_strict=voice_strict)
-        if item:
-            return [{"name": "remove_from_cart", "args": {"item_name": item}}]
+    # Urdu/Roman clauses where item comes BEFORE add/include/shamil command
+    # (e.g. "dine in hun, chicken burger apni tray mein add kar do cart").
+    add_clause_candidates = [c.strip() for c in re.split(r"[،,]", t) if c and c.strip()]
+    if not add_clause_candidates:
+        add_clause_candidates = [t]
+    _add_pre = None
+    for _clause in add_clause_candidates:
+        _add_pre = re.search(
+            r"^(.+?)\s+(?:add|include|shamil)\s*"
+            r"(?:karo|kar\s*do|kar\s*2|krdo|kardo|karein|please)?\s*"
+            r"(?:cart|order|tray)?\s*(?:mein|me|mai|میں)?\s*$",
+            _clause,
+            flags=re.IGNORECASE,
+        )
+        if _add_pre:
+            raw_phrase = (_add_pre.group(1) or "").strip()
+            # Remove dine-in/delivery context words; keep probable item tokens.
+            raw_phrase = re.sub(
+                r"\b(?:yahan|restaurant|table|dine\s*in|hun|hoon|apni|tray|kiosk|"
+                r"se|order|abhi|yahi|khaoonga|khaunga|home|delivery|ghar|mangwana|"
+                r"wala|wali|walay|ke\s+liye|pe|mein|me|mai|karo|kar|do|krdo|kardo|"
+                r"bhi|cod|cash|card|pay|payment|cart|include|shamil|add|"
+                r"par|hai|han|ha|ke|liye)\b",
+                " ",
+                raw_phrase,
+                flags=re.IGNORECASE,
+            )
+            raw_phrase = re.sub(r"\s+", " ", raw_phrase).strip(" .!?-—")
+            if raw_phrase:
+                calls = _build_add_to_cart_calls(raw_phrase, voice_strict=voice_strict)
+                if calls:
+                    return calls
+        _add_cart_shamil = re.search(
+            r"^(.+?)\s+cart\s*(?:mein|me|mai|میں)\s+"
+            r"(?:shamil|include)\s*(?:karo|kar\s*do|krdo|kardo)?(?:\s+.*)?$",
+            _clause,
+            flags=re.IGNORECASE,
+        )
+        if _add_cart_shamil:
+            raw_phrase = (_add_cart_shamil.group(1) or "").strip()
+            raw_phrase = re.sub(
+                r"\b(?:deliver|delivery|home|ghar|mangwana|dine\s*in|hun|hoon|kiosk|"
+                r"restaurant|table|apni|tray|yahan|abhi|yahi|order|cart|bhi|"
+                r"cod|cash|card|pay|payment|karo|kar|do|par|hai|han|ha|ke|liye)\b",
+                " ",
+                raw_phrase,
+                flags=re.IGNORECASE,
+            )
+            raw_phrase = re.sub(r"\s+", " ", raw_phrase).strip(" .!?-—")
+            if raw_phrase:
+                calls = _build_add_to_cart_calls(raw_phrase, voice_strict=voice_strict)
+                if calls:
+                    return calls
+        _add_put = re.search(
+            r"^(.+?)\s+(?:cart|order)\s*(?:mein|me|mai|میں)?\s+"
+            r"(?:dal|daal|ڈال)\s*(?:do|karo|krdo|kar\s*do)?\s*(?:cart|order)?\s*$",
+            _clause,
+            flags=re.IGNORECASE,
+        )
+        if _add_put:
+            raw_phrase = (_add_put.group(1) or "").strip()
+            raw_phrase = re.sub(
+                r"\b(?:home|delivery|ghar|mangwana|dine\s*in|hun|hoon|kiosk|"
+                r"restaurant|table|apni|tray|yahan|abhi|yahi|order|cart|"
+                r"par|hai|han|ha|ke|liye)\b",
+                " ",
+                raw_phrase,
+                flags=re.IGNORECASE,
+            )
+            raw_phrase = re.sub(r"\s+", " ", raw_phrase).strip(" .!?-—")
+            if raw_phrase:
+                calls = _build_add_to_cart_calls(raw_phrase, voice_strict=voice_strict)
+                if calls:
+                    return calls
 
     # Urdu word order but translated (e.g. "3 cola cart mein add karo")
-    m_add_ur = re.search(r"^(.+?)\s+(?:cart\s+mein|cart\s+me|cart\s+mai|order\s+mein|cart)\s*(?:mein\s+)?add\s*(?:karo|kar\s*do|krdo|karein)?\s*$", t)
+    _cart_ctx = r"(?:cart\s+mein|cart\s+me|cart\s+mai|order\s+mein|cart|کارٹ)\s*(?:mein|میں|mai)\s*"
+    m_add_ur = re.search(
+        rf"^(.+?)\s+{_cart_ctx}add\s*(?:karo|kar\s*do|kar\s*2|krdo|karein|کر\s*دو|کرو|کر\s*2)?\s*$",
+        t,
+        flags=re.IGNORECASE,
+    )
     if m_add_ur:
         calls = _build_add_to_cart_calls(
             m_add_ur.group(1),
@@ -1344,7 +1692,24 @@ def _deterministic_chat_tool_calls(
         if calls:
             return calls
 
-    m_add = re.search(r"\badd\s+(?:(\d+)\s+)?(.+)$", t)
+    m_add = re.search(r"\b(?:add|include|shamil)\s+(?:(\d+)\s+)?(.+)$", t)
+    if m_add:
+        tail = (m_add.group(2) or "").strip()
+        # "cart mein add karo" is not "add <item>" — avoid resolving the
+        # imperative verb token itself ("karo") to a random menu item.
+        if re.fullmatch(
+            r"(?:karo|karein|karain|kar\s*do|kar\s*2|krdo|kardo|kijiye|kijiay|please|2|"
+            r"cart|order|tray|cart\s+mein|cart\s+me|cart\s+mai)\s*",
+            tail,
+            flags=re.IGNORECASE,
+        ):
+            m_add = None
+        # Latin "add" before an Urdu imperative tail (e.g. "... add کر دو") is not
+        # "add <item>" — it is cart phrasing; skip so we don't fuzzy-match biryani.
+        if re.search(r"[\u0600-\u06FF٫٬،]", tail) and not re.search(
+            r"[a-z]{2,}", tail.lower()
+        ):
+            m_add = None
     if m_add:
         leading_qty = int(m_add.group(1)) if m_add.group(1) else None
         calls = _build_add_to_cart_calls(
@@ -1356,20 +1721,31 @@ def _deterministic_chat_tool_calls(
             return calls
 
     if any(k in t for k in ["place order", "confirm order", "checkout", "send to kitchen"]):
-        if any(k in t for k in ["card", "credit", "debit"]):
+        _po_card = any(k in t for k in ["card", "credit", "debit"])
+        _po_cashish = any(
+            k in t for k in ["cash", "cod", "cash on delivery", "naqd", "naqad"]
+        )
+        if _po_card and _po_cashish:
+            pm = "ASK"
+        elif _po_card:
             pm = "CARD"
-        elif any(k in t for k in ["cash", "cod", "delivery", "cash on delivery"]):
+        elif _po_cashish:
             pm = "COD"
         else:
             pm = "COD"
         return [{"name": "place_order", "args": {"payment_method": pm}}]
 
     if any(k in t for k in ["what should i eat", "recommend", "suggest", "top seller", "popular", "best selling", "trending"]):
+        # Natural preference asks should route to concrete menu slices so
+        # delivery + dine-in behave consistently without LLM dependency.
+        if any(k in t for k in ("thanda", "cold", "chilled", "گرمی", "ٹھنڈا", "ٹھنڈی")):
+            return [{"name": "search_menu", "args": {"query": "drinks"}}]
+        if any(k in t for k in ("spicy", "tikha", "teekha", "chatpata", "masaledar", "تیکھا", "مسالے")):
+            return [{"name": "search_menu", "args": {"query": "spicy"}}]
+        if any(k in t for k in ("light", "healthy", "diet", "halka", "halki", "ہلکا", "ہیلتھی")):
+            return [{"name": "search_menu", "args": {"query": "light"}}]
         source = "top_sellers" if any(k in t for k in ["top seller", "popular", "best selling", "trending"]) else "general"
         return [{"name": "get_recommendations", "args": {"source": source}}]
-
-    if any(k in t for k in ["where is my order", "order status", "track my order", "eta", "time left", "how long"]):
-        return [{"name": "get_order_status", "args": {}}]
 
     # ── Favourites intent ─────────────────────────────────────────────────────
     # Detect on BOTH normalized text AND raw transcript so the keyword is
@@ -2099,14 +2475,54 @@ def _canonicalize_action_item_names(
         if name in {"add_to_cart", "remove_from_cart", "change_quantity"}:
             raw_item = str(args.get("item_name") or "").strip()
             if raw_item:
-                args["item_name"] = _resolve_cart_item_name(
+                resolved_item = _resolve_cart_item_name(
                     raw_item,
                     voice_strict=voice_strict,
                 )
+                args["item_name"] = resolved_item
 
         fixed_calls.append({"name": name, "args": args})
 
     return fixed_calls
+
+
+_TOOL_NAME_ALIASES = {
+    "show_order_status": "get_order_status",
+    "check_order_status": "get_order_status",
+    "order_tracking": "get_order_status",
+}
+
+
+def _alias_tool_call_names(tool_calls: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for c in tool_calls or []:
+        if not c:
+            continue
+        nc = dict(c)
+        nm = str(nc.get("name") or "").strip().lower()
+        if nm in _TOOL_NAME_ALIASES:
+            nc["name"] = _TOOL_NAME_ALIASES[nm]
+        out.append(nc)
+    return out
+
+
+def _finalize_action_tool_calls(
+    tool_calls: List[Dict[str, Any]],
+    *,
+    voice_strict: bool = False,
+) -> List[Dict[str, Any]]:
+    """Resolve item names, then apply restaurant ordering (cart before checkout, etc.)."""
+    tool_calls = _alias_tool_call_names(tool_calls)
+    fixed = _canonicalize_action_item_names(
+        tool_calls,
+        voice_strict=voice_strict,
+    )
+    try:
+        planned = plan_restaurant_tool_calls(fixed)
+        return planned
+    except Exception as e:
+        logger.info(f"[intent_pipeline] plan_restaurant_tool_calls fallback: {e}")
+        return fixed
 
 
 def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) -> str:
@@ -2152,9 +2568,16 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
             return f"Added {item} to your cart." if item else "Item added to cart."
         if name == "remove_from_cart":
             return "Item removed from cart."
+        if name == "clear_cart":
+            return "Clearing your cart."
         if name == "change_quantity":
             return "Cart quantity updated."
         if name == "place_order":
+            pm = str(args.get("payment_method") or "").strip().upper()
+            if pm == "ASK":
+                return (
+                    "I'll place the order once you choose card or cash on delivery."
+                )
             return "Sending your order now."
         if name == "settle_payment":
             method = str(args.get("payment_method") or "card").lower()
@@ -2174,6 +2597,16 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
         if name == "navigate_to":
             return "Opening that section now."
         if name in {"search_menu", "search_deal", "retrieve_menu_context"}:
+            if name == "search_menu":
+                q = str(args.get("query") or "").strip().lower()
+                if "spicy" in q:
+                    return "Got it. Here are some spicy options."
+                if any(k in q for k in ("sweet", "dessert", "meetha", "meethi")):
+                    return "Sure, here are some sweet options."
+                if any(k in q for k in ("drinks", "drink", "cold", "thanda", "chilled")):
+                    return "Great choice. Here are some chilled drink options."
+                if any(k in q for k in ("light", "mild", "healthy")):
+                    return "Here are some light options for you."
             return "Here are the matching options."
         if name == "manage_favourites":
             action_val = str((args or {}).get("action") or "").lower()
@@ -2190,9 +2623,16 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
         return f"{item} کارٹ میں شامل کر دیا۔" if item else "آئٹم کارٹ میں شامل کر دیا۔"
     if name == "remove_from_cart":
         return "آئٹم کارٹ سے ہٹا دیا۔"
+    if name == "clear_cart":
+        return "کارٹ خالی کر دی گئی۔"
     if name == "change_quantity":
         return "کارٹ اپڈیٹ کر دی گئی۔"
     if name == "place_order":
+        pm = str(args.get("payment_method") or "").strip().upper()
+        if pm == "ASK":
+            return (
+                "براہ کرم بتائیں کارڈ سے ادا کریں گے یا ڈیلیوری پر کیش (COD)؟"
+            )
         return "آپ کا آرڈر کچن کو بھیج رہا ہوں۔"
     if name == "settle_payment":
         method = str(args.get("payment_method") or "card").lower()
@@ -2212,6 +2652,16 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
     if name == "navigate_to":
         return "متعلقہ اسکرین کھول رہا ہوں۔"
     if name in {"search_menu", "search_deal", "retrieve_menu_context"}:
+        if name == "search_menu":
+            q = str(args.get("query") or "").strip().lower()
+            if "spicy" in q:
+                return "بالکل، یہ رہے کچھ چٹ پٹے آپشنز۔"
+            if any(k in q for k in ("sweet", "dessert", "meetha", "meethi")):
+                return "ضرور، یہ رہے کچھ میٹھے آپشنز۔"
+            if any(k in q for k in ("drinks", "drink", "cold", "thanda", "chilled")):
+                return "بہترین، یہ رہے کچھ ٹھنڈے مشروبات۔"
+            if any(k in q for k in ("light", "mild", "healthy")):
+                return "یہ رہے آپ کیلئے ہلکے آپشنز۔"
         return "یہ رہے متعلقہ آپشنز۔"
     if name == "manage_favourites":
         action_val = str((args or {}).get("action") or "").lower()
@@ -2459,8 +2909,10 @@ def fetch_menu_items_by_name(name: str):
         FROM menu_item
         WHERE 
             item_name ILIKE :name
+            OR item_description ILIKE :name
             OR item_category ILIKE :name
             OR item_cuisine ILIKE :name
+            OR tags::text ILIKE :name
         ORDER BY item_id
         LIMIT 20;
     """)
@@ -2489,8 +2941,10 @@ def fetch_deals_by_name(name: str):
         WHERE 
             d.deal_name ILIKE :name
             OR mi.item_name ILIKE :name
+            OR mi.item_description ILIKE :name
             OR mi.item_category ILIKE :name
             OR mi.item_cuisine ILIKE :name
+            OR mi.tags::text ILIKE :name
         GROUP BY 
             d.deal_id, 
             d.deal_name, 
@@ -2641,6 +3095,22 @@ async def chat_text_endpoint(req: TextChatRequest):
         nlp["intent"],
         nlp["keywords"],
     )
+    # Order tracking / ETA before describe-item — same ordering as /voice_chat
+    # so English "what is the status of my order?" cannot become describe_item.
+    if _text_requests_order_tracking(user_text) or _text_requests_order_tracking(
+        normalized_text
+    ):
+        oc = [{"name": "get_order_status", "args": {}}]
+        return {
+            "success": True,
+            "reply": _action_reply_from_tools(oc, language),
+            "menu_items": [],
+            "deals": [],
+            "tool_calls": oc,
+            "nlp": nlp,
+            "memory_slots": mem.get("slots", {}) if mem else {},
+            "raw": "order-status-precheck",
+        }
 
     # ── Info / describe-item short-circuit (text chat) ─────────
     # Mirrors the voice flow so both entry points answer
@@ -2711,13 +3181,13 @@ async def chat_text_endpoint(req: TextChatRequest):
             "deals": [result] if result.get("success") else [],
             "tool_calls": [],
             "nlp": nlp,
-        "memory_slots": slots,
-        "raw": result,
-    }
+            "memory_slots": slots,
+            "raw": result,
+        }
 
     deterministic_calls = _deterministic_chat_tool_calls(normalized_text, nlp)
     if deterministic_calls:
-        deterministic_calls = _canonicalize_action_item_names(deterministic_calls)
+        deterministic_calls = _finalize_action_tool_calls(deterministic_calls)
         return {
             "success": True,
             "reply": _action_reply_from_tools(deterministic_calls, language),
@@ -2760,7 +3230,9 @@ async def chat_text_endpoint(req: TextChatRequest):
         menu_context=""
     )
 
-    tool_calls = _canonicalize_action_item_names(getattr(ai_response, "tool_calls", []))
+    tool_calls = _finalize_action_tool_calls(
+        getattr(ai_response, "tool_calls", []),
+    )
 
     menu_items = []
     deals = []
@@ -2789,8 +3261,17 @@ async def chat_text_endpoint(req: TextChatRequest):
         tool_calls = _build_deal_tool_calls(nlp)
         used_search_tool = True
 
+    menu_items, deals, tool_calls = _merge_menu_and_deal_results(
+        nlp, normalized_text, menu_items, deals, tool_calls
+    )
+
     # Deterministic fallback: if deal intent but no deals, ask for custom deal using memory slots.
-    if not deals and nlp["intent"] == "search_deal":
+    # Skip when the user asked for menu+deals together and we still have menu rows to show.
+    if (
+        not deals
+        and nlp["intent"] == "search_deal"
+        and not (_want_menu_and_deals_together(nlp) and menu_items)
+    ):
         slots = mem.get("slots", {}) if mem else {}
         slots["pending_custom_deal"] = True
         if mem is not None:
@@ -3094,6 +3575,26 @@ async def chat_voice_endpoint(
                 "raw": f"custom-deal-route:{custom_deal_route.get('source')}",
             }
 
+        # ── Order tracking before describe-item ───────────────────
+        # Stops phrases like "what is the status of my order?" from matching
+        # the generic English "what is X" menu-info detector.
+        if _text_requests_order_tracking(
+            transcript
+        ) or _text_requests_order_tracking(normalized_text):
+            oc = [{"name": "get_order_status", "args": {}}]
+            return {
+                "success": True,
+                "transcript": transcript,
+                "normalized_text": normalized_text,
+                "reply": _action_reply_from_tools(oc, response_language),
+                "menu_items": [],
+                "deals": [],
+                "tool_calls": oc,
+                "nlp": nlp,
+                "memory_slots": (mem.get("slots", {}) if mem else {}),
+                "raw": "order-status-precheck",
+            }
+
         # ── Info / describe-item short-circuit ────────────────
         # Runs after custom-deal (so "deal banao" still wins) but before
         # generic tool routing, because the keyword detector would otherwise
@@ -3206,9 +3707,28 @@ async def chat_voice_endpoint(
                     transcript, nlp, voice_strict=True
                 )
 
+        # Mixed Urdu + English dish names: translation often garbles names; raw
+        # _extract_urdu_add_to_cart beats a single bad fuzzy add from normalized text.
+        urdu_pref: List[Dict[str, Any]] = []
+        if _detect_urdu_add_to_cart_intent(transcript):
+            urdu_pref = _extract_urdu_add_to_cart(transcript, voice_strict=True)
+        if urdu_pref:
+            det_adds = [
+                c
+                for c in (deterministic_calls or [])
+                if str((c or {}).get("name") or "") == "add_to_cart"
+            ]
+            tr = transcript or ""
+            mixed_cart_tail = ("cart" in tr.lower()) and ("میں" in tr)
+            if len(urdu_pref) > len(det_adds) or not det_adds:
+                deterministic_calls = urdu_pref
+            elif mixed_cart_tail and det_adds:
+                deterministic_calls = urdu_pref
+
         if deterministic_calls:
-            deterministic_calls = _canonicalize_action_item_names(
-                deterministic_calls, voice_strict=True
+            deterministic_calls = _finalize_action_tool_calls(
+                deterministic_calls,
+                voice_strict=True,
             )
             ai_response = SimpleNamespace(
                 content=_action_reply_from_tools(deterministic_calls, response_language),
@@ -3226,6 +3746,10 @@ async def chat_voice_endpoint(
         elif _detect_urdu_add_to_cart_intent(transcript):
             urdu_calls = _extract_urdu_add_to_cart(transcript, voice_strict=True)
             if urdu_calls:
+                urdu_calls = _finalize_action_tool_calls(
+                    urdu_calls,
+                    voice_strict=True,
+                )
                 ai_response = SimpleNamespace(
                     content=_action_reply_from_tools(urdu_calls, response_language),
                     tool_calls=urdu_calls,
@@ -3240,7 +3764,7 @@ async def chat_voice_endpoint(
                 ai_response = SimpleNamespace(content="", tool_calls=[])
                 _urdu_cart_intent_detected = True
 
-        elif _is_conversational_query(transcript, normalized_text, nlp):
+        elif VOICE_LLM_ENABLED and _is_conversational_query(transcript, normalized_text, nlp):
             # ── Conversational waiter short-circuit ────────────
             # Taste / recommendation / temperature questions deserve a
             # natural reply grounded in the live menu, not a menu-dump or
@@ -3276,33 +3800,37 @@ async def chat_voice_endpoint(
             # On failure fall through to the regular LLM tool-call path.
             ai_response = SimpleNamespace(content="", tool_calls=[])
         else:
-            try:
-                llm_start = _time.time()
-                ai_response = await asyncio.wait_for(
-                    run_in_threadpool(
-                        get_ai_response,
-                        normalized_text,
-                        history,
-                        "",
-                    ),
-                    timeout=120,
-                )
-                _voice_log(
-                    session_id,
-                    "llm",
-                    llm_ms=int((_time.time() - llm_start) * 1000),
-                    tool_calls=getattr(ai_response, "tool_calls", []),
-                )
-            except (asyncio.TimeoutError, TimeoutError):
-                _voice_log(session_id, "llm_timeout", timeout_s=120)
-                ai_response = SimpleNamespace(content=_voice_timeout_reply(response_language, "llm"), tool_calls=[])
-            except Exception:
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": "AI processing failed"},
-                )
+            if not VOICE_LLM_ENABLED:
+                _voice_log(session_id, "llm_disabled", reason="VOICE_LLM_ENABLED=0")
+                ai_response = SimpleNamespace(content="", tool_calls=[])
+            else:
+                try:
+                    llm_start = _time.time()
+                    ai_response = await asyncio.wait_for(
+                        run_in_threadpool(
+                            get_ai_response,
+                            normalized_text,
+                            history,
+                            "",
+                        ),
+                        timeout=120,
+                    )
+                    _voice_log(
+                        session_id,
+                        "llm",
+                        llm_ms=int((_time.time() - llm_start) * 1000),
+                        tool_calls=getattr(ai_response, "tool_calls", []),
+                    )
+                except (asyncio.TimeoutError, TimeoutError):
+                    _voice_log(session_id, "llm_timeout", timeout_s=120)
+                    ai_response = SimpleNamespace(content=_voice_timeout_reply(response_language, "llm"), tool_calls=[])
+                except Exception:
+                    return JSONResponse(
+                        status_code=500,
+                        content={"error": "AI processing failed"},
+                    )
 
-        tool_calls = _canonicalize_action_item_names(
+        tool_calls = _finalize_action_tool_calls(
             getattr(ai_response, "tool_calls", []),
             voice_strict=True,
         )
@@ -3334,8 +3862,16 @@ async def chat_voice_endpoint(
             tool_calls = _build_deal_tool_calls(nlp)
             used_search_tool = True
 
+        menu_items, deals, tool_calls = _merge_menu_and_deal_results(
+            nlp, normalized_text, menu_items, deals, tool_calls
+        )
+
         # Deterministic fallback: no deal found, continue conversation with memory.
-        if not deals and nlp["intent"] == "search_deal":
+        if (
+            not deals
+            and nlp["intent"] == "search_deal"
+            and not (_want_menu_and_deals_together(nlp) and menu_items)
+        ):
             slots = mem.get("slots", {}) if mem else {}
             slots["pending_custom_deal"] = True
             if mem is not None:
@@ -3375,22 +3911,26 @@ async def chat_voice_endpoint(
             if _urdu_cart_intent_detected:
                 reply_text = _safe_domain_reply(response_language)
             else:
-                # Last-resort: try waiter-style LLM before the canned domain
-                # reply so guests still get a natural answer.
-                convo = await run_in_threadpool(
-                    _conversational_waiter_reply,
-                    transcript,
-                    normalized_text,
-                    response_language,
-                    history,
-                )
-                if convo and convo.get("reply"):
-                    reply_text = convo["reply"]
-                    if not menu_items:
-                        menu_items = convo.get("menu_items") or []
-                    _voice_log(session_id, "conversational_fallback", matched_items=len(menu_items))
-                else:
+                # In strict deterministic voice mode, skip conversational LLM fallback.
+                if not VOICE_LLM_ENABLED:
                     reply_text = _safe_domain_reply(response_language)
+                else:
+                    # Last-resort: try waiter-style LLM before the canned domain
+                    # reply so guests still get a natural answer.
+                    convo = await run_in_threadpool(
+                        _conversational_waiter_reply,
+                        transcript,
+                        normalized_text,
+                        response_language,
+                        history,
+                    )
+                    if convo and convo.get("reply"):
+                        reply_text = convo["reply"]
+                        if not menu_items:
+                            menu_items = convo.get("menu_items") or []
+                        _voice_log(session_id, "conversational_fallback", matched_items=len(menu_items))
+                    else:
+                        reply_text = _safe_domain_reply(response_language)
 
         _voice_log(
             session_id,

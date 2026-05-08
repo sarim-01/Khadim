@@ -16,7 +16,7 @@ try:
     from infrastructure.config import AGENT_TASKS_CHANNEL
     
     # NEW IMPORTS FOR VECTOR SEARCH
-    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import FAISS
     from langchain_core.documents import Document
 except ImportError as e:
@@ -49,12 +49,12 @@ class CustomDealAgent:
                 self.embeddings, 
                 allow_dangerous_deserialization=True
             )
-            print("[DealAgent] Vector Store Loaded ✅")
+            print("[DealAgent] Vector Store Loaded (OK)")
         except FileNotFoundError:
-            print(f"[DealAgent] ⚠️ Vector Store index not found at '{FAISS_INDEX_PATH}'. Please run 'python vector_store.py' to create it.")
+            print(f"[DealAgent] WARN: Vector Store index not found at '{FAISS_INDEX_PATH}'. Please run 'python vector_store.py' to create it.")
             self.vectorstore = None
         except Exception as e:
-            print(f"[DealAgent] ⚠️ Vector Store failed to load: {e}")
+            print(f"[DealAgent] WARN: Vector Store failed to load: {e}")
             print("[DealAgent] Falling back to SQL search only. Run 'python vector_store.py' to fix semantic search.")
             self.vectorstore = None
 
@@ -1006,13 +1006,13 @@ class CustomDealAgent:
             }
 
 def run_deal_agent():
-    print("💰 Custom Deal Agent (AI-Powered) is STARTING...")
+    print("[DealAgent] Custom Deal Agent (AI-Powered) is STARTING...")
     try:
         agent = CustomDealAgent()
         redis_conn = RedisConnection.get_instance()
         pubsub = redis_conn.pubsub()
         pubsub.subscribe(AGENT_TASKS_CHANNEL)
-        print("✅ Custom Deal Agent LISTENING...")
+        print("[DealAgent] Custom Deal Agent LISTENING (OK)")
 
         for msg in pubsub.listen():
             if msg.get("type") != "message": continue

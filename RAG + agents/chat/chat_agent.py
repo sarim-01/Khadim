@@ -297,6 +297,14 @@ Only use retrieve_menu_context for vague or open-ended questions like:
 
 This rule ensures accurate SQL results for both menu items and deals.
 
+COMPOSITE REQUESTS (REAL GUESTS OFTEN MIX INTENTS):
+- You MAY output MULTIPLE `TOOL_CALL:` lines in a single turn; the orchestrator runs them in order.
+- Prefer order: (1) searches / information, (2) cart changes, (3) show_cart / place_order when all are asked.
+- Examples:
+  • "Add chicken tikka and show the cart" → TOOL_CALL add_to_cart, then TOOL_CALL show_cart
+  • "Search chinese and add spring rolls" → TOOL_CALL search_menu | query=chinese , then add_to_cart for Spring Rolls
+- Never guess spellings of dish names for add_to_cart: search_menu first if the name might be wrong.
+
 """
         
         if menu_context:

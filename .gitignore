@@ -43,3 +43,9 @@ Thumbs.db
 *.pth
 
 Rag + Agents/audio/
+
+# Local QA/debug temp scripts
+**/.cursor_tmp*
+
+# Local database dump (do not commit)
+db.sql

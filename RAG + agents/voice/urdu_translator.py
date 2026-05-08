@@ -8,6 +8,20 @@ from typing import Dict, List
 from dotenv import load_dotenv
 load_dotenv()
 
+# Keep translation deterministic by default; set to 1/true to re-enable LLM fallback.
+TRANSLATOR_LLM_FALLBACK_ENABLED = (
+    os.getenv("TRANSLATOR_LLM_FALLBACK_ENABLED", "0").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+
+
+def _safe_log_text(value: str) -> str:
+    """Return ASCII-safe representation for Windows cp1252 consoles."""
+    try:
+        return (value or "").encode("unicode_escape").decode("ascii")
+    except Exception:
+        return "<unprintable>"
+
 # ─────────────────────────────────────────────────────────────
 # ENGLISH WRITTEN IN URDU SCRIPT BY WHISPER
 # ─────────────────────────────────────────────────────────────
@@ -80,10 +94,11 @@ ENGLISH_IN_URDU_SCRIPT = {
     "لکھو":    "write",  # NEW: handle "لکھو" (write) as a deal request variant
     # ── Food ─────────────────────────────────────────────────
     "فرائز":   "fries", "فرائیز":"fries",
-    "چکن":     "chicken","چیکن": "chicken","جیکن": "chicken","چکا": "chicken","کن": "chicken","برگر": "burger","بردر": "burger",
+    "چکن":     "chicken","چیکن": "chicken","جیکن": "chicken","چکا": "chicken","برگر": "burger","بردر": "burger",
     "چکر":     "chicken","کولا": "cola",  "ڈرنک": "drink",
     "نگٹس":    "nuggets","نیگٹس":"nuggets","نیکٹس":"nuggets","نیگسٹ":"nuggets","نیکٹ":"nuggets","نیگٹسٹو":"nuggets",
     "زنگر":    "zinger","زیگر": "zinger","زینگر":"zinger","زیلگر":"zinger",
+    "کنگ پاؤ": "kung pao","کنگ پاک": "kung pao","کونگ پاؤ": "kung pao",
     # ── Cuisine ──────────────────────────────────────────────
     "فاسٹ":    "fast",  "فوڈ":  "food",
     "فاس":     "fast",  "فاصحوٹ": "fast food", "فاصحود": "fast food", "فاسپورٹ": "fast food", "فاس خوڈ": "fast food", "خوڈ": "food", "ارمتین": "3",
@@ -169,6 +184,10 @@ URDU_SCRIPT_MAP = {
     "آرڈر کی اپڈیٹ":             "order status",
     "کتنا وقت باقی ہے":          "time left",
     "کتنا ٹائم رہ گیا":          "time left",
+    "آرڈر میں کتنا ٹائم":        "time left",
+    "آڈر میں کتنا ٹائم":         "time left",
+    "آرڈر کو کتنا ٹائم":         "time left",
+    "میری ڈیلیوری کتنی دیر":     "time left",
     "ای ٹی اے":                  "eta",
     # ── Suggestions / top sellers ───────────────────────────
     "ٹاپ سیلرز":                 "top sellers",
@@ -176,6 +195,11 @@ URDU_SCRIPT_MAP = {
     "مشورہ دو":                  "suggest",
     "سجیشن دو":                  "suggest",
     # ── Show cart ────────────────────────────────────────────
+    "کارڈ خالی کر دو":          "empty cart",
+    "کارڈ خالی کر":            "empty cart",
+    "کارڈ خالی":               "empty cart",
+    "کارٹ خالی کر دو":         "empty cart",
+    "کارٹ خالی":               "empty cart",
     "کارٹ میں کیا ہے":          "show cart",
     "کارٹ دکھاؤ":                "show cart",
     "کارٹ دکھائیں":              "show cart",
@@ -224,9 +248,11 @@ URDU_SCRIPT_MAP = {
     "کارٹ میں ڈالو":             "add to cart",
     "کارٹ میں شامل":             "add to cart",
     "شامل کرو":                  "add",
-    "شامل کر دو":                "add",
+    # Imperative dois — unicode keys so bare dois->2 cannot break "کر dois".
+    "شامل کر دو":        "add",
+    "کر دو":   "kar do",
     "ڈالو":                      "add",
-    "ڈال دو":                    "add",
+    "ڈال دو":            "add",
     "ہٹاؤ":                      "remove",
     "ہٹا دو":                    "remove",
     "نکالو":                     "remove",
@@ -265,8 +291,10 @@ URDU_SCRIPT_MAP = {
     "کے لیے":                    "for",
     "کیلئے":                     "for",
     # ── Food items ───────────────────────────────────────────
-    "زنگر":                      "zinger burger",
-    "زندھر":                     "zinger burger",
+    # Keep "zinger" only — "برگر"/"burger" is mapped separately or already in the phrase.
+    # Mapping زنگر→"zinger burger" then برگر→"burger" produced "zinger burger burger".
+    "زنگر":                      "zinger",
+    "زندھر":                     "zinger",
     "برگر":                      "burger",
     "کڑاہی":                     "karahi",
     "بریانی":                    "biryani",
@@ -393,7 +421,7 @@ ROMAN_MAP = {
     "deal":                       "deal",
     "deals":                      "deals",
     # Food
-    "zinger":                     "zinger burger",
+    "zinger":                     "zinger",
     "burger":                     "burger",
     "biryani":                    "biryani",
     "karahi":                     "karahi",
@@ -579,6 +607,7 @@ _DISH_ALIASES: Dict[str, List[str]] = {
     "handi":     ["handi", "ہانڈی"],
     "biryani":   ["biryani", "biriyani", "بریانی"],
     "tikka":     ["tikka", "tika", "ٹکہ"],
+    "kung pao": ["kung pao", "kungpao", "کنگ پاؤ", "کنگ پاک", "کنک پاؤ"],
     "boti":      ["boti", "بوٹی"],
     "kebab":     ["kebab", "kabab", "kabaab", "کباب"],
     "burger":    ["burger", "برگر"],
@@ -890,6 +919,64 @@ def _strip_filler(item: str) -> str:
     return t
 
 
+def _looks_like_order_status_question(raw: str, lowered: str) -> bool:
+    """True if the user is asking for ETA / tracking / progress, not menu info."""
+    if not raw and not lowered:
+        return False
+    # Common English normalisations from the translator.
+    if any(
+        p in lowered
+        for p in (
+            "order status",
+            "status of my order",
+            "track my order",
+            "track order",
+            "where is my order",
+            "order tracking",
+            "delivery time",
+            "how long",
+            "time left",
+            "how much time",
+        )
+    ):
+        return True
+    if "progress" in lowered and "order" in lowered:
+        return True
+    if "track" in lowered and (
+        "order" in lowered or "delivery" in lowered or "آرڈر" in raw or "آڈر" in raw
+    ):
+        return True
+    # Urdu / mixed fragments (raw transcript).
+    if any(
+        w in raw
+        for w in (
+            "آرڈر",
+            "اڈر",
+            "آڈر",
+            "میرا order",
+            "میرے order",
+            "order track",
+        )
+    ) and any(
+        w in raw or w in lowered
+        for w in (
+            "track",
+            "progress",
+            "پروگریس",
+            "ستیٹس",
+            "status",
+            "کتنا",
+            "ٹائم",
+            "وقت",
+            "time",
+            "dair",
+            "waqt",
+        )
+    ):
+        return True
+    return False
+
+
 def detect_info_intent(text: str):
     """Return {"is_info": True, "item": <phrase>} if the utterance is an
     info / describe request, else None.
@@ -925,6 +1012,11 @@ def detect_info_intent(text: str):
     # Cheap gate: the utterance must contain at least one info trigger.
     # This avoids false positives on "show me burgers", "add biryani", etc.
     if not any(trig in lowered or trig in raw for trig in _INFO_TRIGGERS):
+        return None
+
+    # "What is the status of my order?" matches the English "what is X" info
+    # pattern but must route to order tracking, not describe_item.
+    if _looks_like_order_status_question(raw, lowered):
         return None
 
     # Never treat cart / order / deal-creation utterances as info requests,
@@ -994,14 +1086,14 @@ def translate_urdu_to_english(text: str) -> str:
         return ""
 
     result = text.strip()
-    print(f"[Translator] Input: '{result}'")
+    print(f"[Translator] Input: '{_safe_log_text(result)}'")
 
     # ── Step 1: Custom deal detection FIRST ───────────────────
     if _is_custom_deal_query(result):
         count, cuisine = _extract_deal_info(result)
         items = _extract_deal_items(result)
         query = _build_deal_query(cuisine, count, items)
-        print(f"[Translator] Custom deal → '{query}'")
+        print(f"[Translator] Custom deal -> '{_safe_log_text(query)}'")
         return query
 
     # ── Step 2: English-in-Urdu-script (Whisper mis-hearings) ─
@@ -1027,15 +1119,22 @@ def translate_urdu_to_english(text: str) -> str:
 
     # ── Step 6: Clean ──────────────────────────────────────────
     result = re.sub(r'\s+', ' ', result).strip()
+    # ASR often writes کنگ/Kung splits as stray "کن" fragments + stray Urdu glyphs.
+    result = re.sub(
+        r"(?i)\b\d*\s*(?:chicken|چکن)\s*گ\s*(?:پاؤ|pao)\b",
+        "kung pao",
+        result,
+    )
 
-    # ── Step 7: LLM only if still mostly non-ASCII ────────────
-    non_ascii = sum(1 for c in result if ord(c) > 127)
-    total     = len(result.replace(' ', ''))
-    if total > 0 and non_ascii / total > 0.4:
-        print(f"[Translator] Still unclear, trying LLM...")
-        result = _llm_translate(text)
+    # ── Step 7: Optional LLM fallback (disabled by default) ───
+    if TRANSLATOR_LLM_FALLBACK_ENABLED:
+        non_ascii = sum(1 for c in result if ord(c) > 127)
+        total     = len(result.replace(' ', ''))
+        if total > 0 and non_ascii / total > 0.4:
+            print(f"[Translator] Still unclear, trying LLM...")
+            result = _llm_translate(text)
 
-    print(f"[Translator] Output: '{result}'")
+    print(f"[Translator] Output: '{_safe_log_text(result)}'")
     return result if result else text
 
 

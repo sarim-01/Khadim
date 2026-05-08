@@ -38,7 +38,7 @@ def chunk_text(text, limit=180):
 
 
 # ----------------------------------------
-# MAIN TTS FUNCTION (Improved gTTS Urdu)
+# MAIN TTS — Google TTS only (no ElevenLabs for playback)
 # ----------------------------------------
 def generate_tts(text: str, lang="ur"):
     cleaned = clean_text(text)
@@ -48,7 +48,7 @@ def generate_tts(text: str, lang="ur"):
     combined = None
 
     for ch in chunks:
-        tts = gTTS(ch, lang=lang, slow=False)   # slow=False = faster speech
+        tts = gTTS(ch, lang=lang, slow=False)  # slow=False = faster speech
         temp_file = f"audio/temp_{uuid.uuid4()}.mp3"
         tts.save(temp_file)
 

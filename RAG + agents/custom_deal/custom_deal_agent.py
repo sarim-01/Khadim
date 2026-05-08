@@ -16,7 +16,7 @@ try:
     from infrastructure.config import AGENT_TASKS_CHANNEL
     
     # NEW IMPORTS FOR VECTOR SEARCH
-    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import FAISS
     from langchain_core.documents import Document
 except ImportError as e:

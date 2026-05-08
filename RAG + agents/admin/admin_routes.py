@@ -1,13 +1,14 @@
 # admin/admin_routes.py
 #
 # PREREQUISITES:
-#   1. Insert the static admin user into auth.app_users (run once in psql):
+#   1. Insert the static admin user into auth.app_users (run once in psql).
+#      Password below is 123456 (bcrypt). Regenerate:  python -c "import bcrypt; print(bcrypt.hashpw(b'123456', bcrypt.gensalt()).decode())"
 #
 #      INSERT INTO auth.app_users (full_name, email, password_hash, is_active)
 #      VALUES (
 #          'Admin',
 #          'admin@gmail.com',
-#          '$2b$12$KIXoO6N5H4Y1y3eC8jQzaujAnNipzANNaI9c36pmYpVjjzYGjwwp2',  -- bcrypt of '123456'
+#          '$2b$12$Eo95xPLEWWchxWTZnltOO.S2GXyzR9xZ0BmZXF4XSxz.YsdV2ni26',
 #          TRUE
 #      )
 #      ON CONFLICT (email) DO NOTHING;

@@ -1,0 +1,51 @@
+# Local / single-server stack. Copy .env.example → .env and set secrets.
+# Restore DB: docker compose up -d postgres && sleep 5 && pg_restore -h localhost -U postgres -d restaurant --clean --if-exists db.dump
+#
+# In .env for containers use hostnames `postgres` and `redis`, e.g.:
+#   DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@postgres:5432/restaurant
+#   REDIS_HOST=redis
+#   REDIS_PORT=6379
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: restaurant
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d restaurant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # Defaults if not set in .env (Docker network hostnames)
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./faiss_index:/app/faiss_index:ro
+    restart: unless-stopped
+
+volumes:
+  pgdata:

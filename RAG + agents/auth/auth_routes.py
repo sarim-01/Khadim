@@ -236,4 +236,4 @@ def update_me(
                 {"uid": user_id, "addr": payload.delivery_address.strip()},
             )
 
-    return {"success": True, "message": "Profile updated"}
+    return {"success": True, "message": "Profile updated"}

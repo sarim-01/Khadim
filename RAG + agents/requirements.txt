@@ -20,6 +20,7 @@ openai
 langchain
 langchain-openai
 langchain-community
+langchain-huggingface
 faiss-cpu
 langchain-groq
 tiktoken
@@ -28,6 +29,7 @@ tiktoken
 elevenlabs
 openai-whisper
 gtts
+pydub
 librosa
 
 # Utilities
