@@ -10,7 +10,8 @@ import 'package:khaadim/screens/auth/login_screen.dart';
 import 'package:khaadim/screens/auth/signup_screen.dart';
 import 'package:khaadim/screens/navigation/main_screen.dart';
 
-void main() {
+/// Used by [main] in `main.dart` when Android/iOS `--flavor admin` matches.
+void runAdminFlavor() {
   AppConfig.flavor = AppFlavor.admin;
   runApp(
     MultiProvider(
@@ -22,6 +23,8 @@ void main() {
     ),
   );
 }
+
+void main() => runAdminFlavor();
 
 class KhaadimAdminApp extends StatelessWidget {
   const KhaadimAdminApp({super.key});

@@ -11,7 +11,6 @@
 //   6. _pendingCustomDealQuery stores the query waiting for confirmation
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -19,13 +18,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+import 'package:khaadim/app_config.dart';
 import 'package:khaadim/providers/cart_provider.dart';
-import 'package:khaadim/services/api_config.dart';
+import 'package:khaadim/providers/dine_in_provider.dart';
+import 'package:khaadim/services/dine_in_service.dart';
+import 'package:khaadim/utils/order_status_guest_copy.dart';
 import 'package:khaadim/services/chat_service.dart';
 import 'package:khaadim/services/conversation_memory.dart';
 import 'package:khaadim/services/order_service.dart';
@@ -111,8 +112,7 @@ class VoiceOrderHandler extends ChangeNotifier {
     _checkoutInterceptor = fn;
   }
 
-  /// Speaks [text] immediately using the backend gTTS pipeline (same as
-  /// the rest of the app). [lang] should be 'ur' or 'en'.
+  /// Speaks [text] with on-device [FlutterTts]. [lang] should be 'ur' or 'en'.
   Future<void> speakDirectly(String text, {String lang = 'ur'}) async {
     await _speak(text, language: lang);
   }
@@ -133,12 +133,13 @@ class VoiceOrderHandler extends ChangeNotifier {
   }
 
   Future<void> init() async {
-    // Pass this handler's _speak as the speaker so the deal service can
-    // route Urdu through the backend gTTS pipeline (FlutterTts alone has
-    // no Urdu voice on most Android builds, which is why deal summaries
-    // were previously silent).
-    _customDeal = VoiceCustomDealService(_tts, speaker: _speak);
-    _voiceCmd = VoiceCommandService(tts: _tts);
+    // Deal / command flows use the same on-device TTS as the main handler.
+    _customDeal = VoiceCustomDealService(
+      _tts,
+      speaker: (text, {language}) =>
+          _speak(text, language: language, awaitCompletion: false),
+    );
+    _voiceCmd = VoiceCommandService(onSpeak: (t) => _speak(t));
     _voiceInitialized = true;
     if (_pendingDineInAddItemCallback != null) {
       _voiceCmd.setDineInAddItemCallback(_pendingDineInAddItemCallback!);
@@ -158,7 +159,9 @@ class VoiceOrderHandler extends ChangeNotifier {
         _lastAnnouncedMessage = '';
       });
       _ttsReady = true;
-    } catch (_) {}
+    } catch (_) {
+      _ttsReady = false;
+    }
   }
 
   Future<void> _applyTTSLang() async {
@@ -213,7 +216,7 @@ class VoiceOrderHandler extends ChangeNotifier {
   // ── Urdu recording ────────────────────────────────────────
   Future<void> _startWhisper(BuildContext context) async {
     if (!_recorderReady) {
-      _snackError(context, 'مائیکروفون اجازت نہیں');
+      _snackError(context, _msgMicPermission());
       return;
     }
     final dir = await getTemporaryDirectory();
@@ -229,7 +232,7 @@ class VoiceOrderHandler extends ChangeNotifier {
       _isRecording = true;
       notifyListeners();
     } catch (_) {
-      _snackError(context, 'مائیکروفون شروع نہیں ہوا');
+      _snackError(context, _msgMicStartFailed());
     }
   }
 
@@ -242,7 +245,7 @@ class VoiceOrderHandler extends ChangeNotifier {
     final file = File(path);
     if (!await file.exists() || await file.length() < 5000) {
       if (await file.exists()) await file.delete();
-      _snackError(context, 'بہت چھوٹا — دوبارہ کوشش کریں');
+      _snackError(context, _msgRecordingTooShort());
       return;
     }
     await _processUrduAudio(context, file);
@@ -263,13 +266,12 @@ class VoiceOrderHandler extends ChangeNotifier {
       final transcript = ChatService.extractTranscript(voiceRes);
 
       if (transcript.isEmpty) {
-        _snackError(context, 'کوئی آواز سنائی نہیں دی');
+        _snackError(context, _msgNoTranscript());
         return;
       }
 
       // Store user turn BEFORE executing
       _memory.add(role: 'user', text: transcript);
-      _snackInfo(context, '🎤 $transcript');
 
       // ── Context-window yes/no detection ──────────────────
       // If last assistant turn was a deal offer and user says yes/no
@@ -297,8 +299,7 @@ class VoiceOrderHandler extends ChangeNotifier {
 
       // Checkout-screen interceptor: handles COD/card/place-order commands
       // directly without going through the full backend pipeline.
-      if (_checkoutInterceptor != null &&
-          _checkoutInterceptor!(transcript)) {
+      if (_checkoutInterceptor != null && _checkoutInterceptor!(transcript)) {
         return; // fully handled
       }
 
@@ -310,12 +311,11 @@ class VoiceOrderHandler extends ChangeNotifier {
       await _executeFromResponse(context, transcript, voiceRes);
     } on ChatServiceException catch (e, st) {
       debugPrint('[VoiceOrderHandler] ChatServiceException: $e\n$st');
-      _snackError(context, 'درخواست میں خرابی');
+      _snackError(context, _msgErrConnection());
     } catch (e, st) {
-      // Surface the real exception — the blanket "kharabi" popup without a
-      // log made this near-impossible to debug last time.
-      debugPrint('[VoiceOrderHandler] Unexpected error in _processUrduAudio: $e\n$st');
-      _snackError(context, 'خرابی — دوبارہ کوشش کریں');
+      debugPrint(
+          '[VoiceOrderHandler] Unexpected error in _processUrduAudio: $e\n$st');
+      _snackError(context, _msgErrGeneric());
     } finally {
       if (await file.exists()) await file.delete();
       _isProcessing = false;
@@ -334,7 +334,10 @@ class VoiceOrderHandler extends ChangeNotifier {
       notifyListeners();
       if (text != null && text.trim().isNotEmpty) {
         _memory.add(role: 'user', text: text.trim());
-        _snackInfo(context, '🎤 $text');
+        _snackInfo(
+          context,
+          _isUrdu ? 'سنا گیا: $text' : 'Heard: $text',
+        );
 
         // Context-window yes/no detection (English path)
         if (_pendingCustomDealQuery != null) {
@@ -371,16 +374,18 @@ class VoiceOrderHandler extends ChangeNotifier {
 
         await _runCommand(context, text.trim());
       } else {
-        _snackError(context, 'Nothing heard');
+        _snackError(context, _msgNoSpeechHeard());
       }
-    } on PlatformException catch (e) {
+    } on PlatformException catch (e, st) {
       _isRecording = false;
       notifyListeners();
-      _snackError(context, e.message ?? 'Speech failed');
-    } catch (_) {
+      debugPrint('[VoiceOrderHandler] PlatformException speech: $e\n$st');
+      _snackError(context, _msgSpeechNotAvailable());
+    } catch (_, st) {
       _isRecording = false;
       notifyListeners();
-      _snackError(context, 'Speech failed');
+      debugPrint('[VoiceOrderHandler] Native STT error\n$st');
+      _snackError(context, _msgErrGeneric());
     }
   }
 
@@ -405,7 +410,7 @@ class VoiceOrderHandler extends ChangeNotifier {
       await _handleResult(context, result, originalTranscript: transcript);
     } catch (e, st) {
       debugPrint('[VoiceOrderHandler] _executeFromResponse error: $e\n$st');
-      _snackError(context, 'خرابی — دوبارہ کوشش کریں');
+      _snackError(context, _msgErrGeneric());
     } finally {
       _isProcessing = false;
       notifyListeners();
@@ -425,15 +430,17 @@ class VoiceOrderHandler extends ChangeNotifier {
         memory: _memory,
       );
       await _handleResult(context, result, originalTranscript: transcript);
-    } catch (_) {
-      _snackError(context, 'Error — try again');
+    } catch (e, st) {
+      debugPrint('[VoiceOrderHandler] _runCommand error: $e\n$st');
+      _snackError(context, _msgErrGeneric());
     } finally {
       _isProcessing = false;
       notifyListeners();
     }
   }
 
-  Future<bool> _handleGlobalVoiceCommands(BuildContext context, String transcript) async {
+  Future<bool> _handleGlobalVoiceCommands(
+      BuildContext context, String transcript) async {
     final t = transcript.toLowerCase().trim();
 
     // 1. Check for Add Card / Card Payment
@@ -442,15 +449,17 @@ class VoiceOrderHandler extends ChangeNotifier {
         t.contains('add card') ||
         t.contains('نیا کارڈ');
 
-    final isCard = t.contains('card') ||
-        t.contains('کارڈ') ||
-        t.contains('online');
+    final isCard =
+        t.contains('card') || t.contains('کارڈ') || t.contains('online');
 
     if (isNewCard || isCard) {
-      await speakDirectly(isNewCard ? 'نیا کارڈ شامل کریں۔' : 'کارڈ پیمنٹ سیکشن کھول رہا ہوں۔', lang: 'ur');
+      await speakDirectly(
+          isNewCard ? 'نیا کارڈ شامل کریں۔' : 'کارڈ پیمنٹ سیکشن کھول رہا ہوں۔',
+          lang: 'ur');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) {
-           Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()));
         }
       });
       return true;
@@ -458,6 +467,8 @@ class VoiceOrderHandler extends ChangeNotifier {
 
     // 2. Check for Order Status
     final isStatus = t.contains('status') ||
+        t.contains('progress') ||
+        t.contains('track') ||
         t.contains('time') ||
         t.contains('kitni dair') ||
         t.contains('waqt') ||
@@ -474,11 +485,46 @@ class VoiceOrderHandler extends ChangeNotifier {
 
   Future<void> _fetchAndSpeakOrderStatus(BuildContext context) async {
     try {
+      // Kiosk: use table session orders, not delivery "my orders".
+      if (AppConfig.isKiosk && context.mounted) {
+        try {
+          final dineIn =
+              Provider.of<DineInProvider>(context, listen: false);
+          final sid = (dineIn.sessionId ?? '').trim();
+          if (sid.isNotEmpty) {
+            final tableOrders =
+                await DineInService().fetchSessionOrders(
+              sid,
+              token: dineIn.token,
+            );
+            if (tableOrders.isNotEmpty) {
+              final m = tableOrders.last;
+              final ks =
+                  (m['kitchen_status'] ?? m['status'] ?? '').toString();
+              final eta =
+                  (m['estimated_prep_time_minutes'] as num?)?.toInt() ?? 0;
+              final friendly = friendlyDineInKitchenLine(ks, ur: true);
+              final etaBit =
+                  eta > 0 ? ' تقریباً $eta منٹ لگ سکتے ہیں۔' : '';
+              await speakDirectly('$friendly$etaBit', lang: 'ur');
+              return;
+            }
+            await speakDirectly(
+                'ابھی ٹیبل پر کوئی فعال آرڈر نہیں۔',
+                lang: 'ur');
+            return;
+          }
+        } catch (_) {
+          // Fall through to delivery path.
+        }
+      }
+
       final res = await OrderService.getMyOrders();
       final orders = (res['orders'] as List?) ?? [];
-      
+
       final activeOrder = orders.firstWhere(
-        (o) => !['completed', 'cancelled'].contains(o['status'].toString().toLowerCase()),
+        (o) => !['completed', 'cancelled']
+            .contains(o['status'].toString().toLowerCase()),
         orElse: () => null,
       );
 
@@ -488,7 +534,8 @@ class VoiceOrderHandler extends ChangeNotifier {
       }
 
       final status = activeOrder['status'].toString().toLowerCase();
-      final prepTime = (activeOrder['estimated_prep_time_minutes'] as num?)?.toInt() ?? 15;
+      final prepTime =
+          (activeOrder['estimated_prep_time_minutes'] as num?)?.toInt() ?? 15;
 
       String timeStr;
       final base = prepTime > 0 ? prepTime : 15;
@@ -525,8 +572,21 @@ class VoiceOrderHandler extends ChangeNotifier {
     String originalTranscript = '',
   }) async {
     if (!result.success) {
-      _snackError(context, _isUrdu ? 'درخواست میں خرابی' : 'Request error');
+      _snackError(context, _msgErrConnection());
       return;
+    }
+
+    if ((result.intentLine ?? '').trim().isNotEmpty) {
+      _snackVoiceServerRouting(
+        context,
+        originalTranscript,
+        result.intentLine!.trim(),
+      );
+    } else if (originalTranscript.trim().isNotEmpty) {
+      _snackInfo(
+        context,
+        _isUrdu ? 'آپ نے کہا: $originalTranscript' : 'You said: $originalTranscript',
+      );
     }
 
     // Save assistant reply to memory
@@ -579,7 +639,9 @@ class VoiceOrderHandler extends ChangeNotifier {
       return;
     }
 
-    if (action == 'removed_from_cart' || action == 'quantity_changed') {
+    if (action == 'removed_from_cart' ||
+        action == 'quantity_changed' ||
+        action == 'cart_cleared') {
       await _speak(result.reply);
       return;
     }
@@ -626,8 +688,9 @@ class VoiceOrderHandler extends ChangeNotifier {
         return;
       }
       if (result.addedToCart) {
-        final msg =
-            _isUrdu ? 'ڈیل کارٹ میں شامل ہو گئی ✓' : 'Deal added to cart ✓';
+        final msg = _isUrdu
+            ? 'ڈیل کارٹ میں شامل ہو گئی'
+            : 'Deal added to cart';
         _memory.add(role: 'assistant', text: msg);
         if (context.mounted) {
           _snackInfo(context, msg);
@@ -642,13 +705,14 @@ class VoiceOrderHandler extends ChangeNotifier {
           }
         }
       } else if (result.error.isNotEmpty) {
-        if (context.mounted) _snackError(context, result.error);
+        if (context.mounted) {
+          _snackError(context, _friendlyDealError(result.error));
+        }
       }
     } catch (e, st) {
       debugPrint('[VoiceOrderHandler] _runCustomDealFlow error: $e\n$st');
       if (context.mounted) {
-        _snackError(
-            context, _isUrdu ? 'ڈیل بنانے میں خرابی' : 'Deal creation error');
+        _snackError(context, _msgDealFailed());
       }
     } finally {
       _isProcessing = false;
@@ -656,131 +720,124 @@ class VoiceOrderHandler extends ChangeNotifier {
     }
   }
 
-  // ── Upsell ────────────────────────────────────────────────
-  Future<void> _checkUpsell(BuildContext context) async {
-    if (!context.mounted) return;
-    try {
-      final cart = Provider.of<CartProvider>(context, listen: false);
-      final cartNames = cart.items.map((i) => i.name ?? '').toList();
-      if (cartNames.isEmpty) return;
-      final sugg = await _chat.getUpsellSuggestion(
-        lastItemName: cartNames.last,
-        cartItems: cartNames,
-      );
-      if (sugg != null && sugg['success'] == true) {
-        final msg = _isUrdu
-            ? (sugg['suggestion_ur'] as String? ?? '')
-            : (sugg['suggestion_en'] as String? ?? '');
-        if (msg.isNotEmpty) {
-          await Future.delayed(const Duration(milliseconds: 800));
-          _memory.add(role: 'assistant', text: msg);
-          await _speak(msg);
-        }
-      }
-    } catch (_) {}
-  }
-
-  // ── TTS ───────────────────────────────────────────────────
-  // Guard so a second _speak call arriving while audio is already playing
-  // doesn't stack a second voice on top of the first.
+  // ── TTS (on-device only — production-friendly, no second network voice) ──
   bool _isSpeaking = false;
 
-  Future<bool> _speakWithBackendGtts(String text, {String? language}) async {
-    final useUrdu = language == 'ur' || (language == null && _isUrdu);
-    if (!useUrdu || text.trim().isEmpty) return false;
-
-    try {
-      final res = await http
-          .post(
-            Uri.parse('${ApiConfig.baseUrl}/voice/tts'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'text': text, 'language': 'ur'}),
-          )
-          .timeout(const Duration(seconds: 16));
-
-      if (res.statusCode < 200 || res.statusCode >= 300) return false;
-
-      final decoded = jsonDecode(res.body);
-      if (decoded is! Map<String, dynamic>) return false;
-
-      final rawUrl =
-          (decoded['audio_url'] ?? decoded['tts_audio_url'] ?? '').toString();
-      final audioUrl = rawUrl.trim();
-      if (audioUrl.isEmpty) return false;
-
-      final absoluteUrl =
-          audioUrl.startsWith('http://') || audioUrl.startsWith('https://')
-          ? audioUrl
-          : '${ApiConfig.baseUrl}$audioUrl';
-
-      // Stop both engines before playing so nothing overlaps.
-      await _tts.stop();
-      await _gttsPlayer.stop();
-
-      // Play and await completion so the caller knows when audio has finished.
-      final completer = Completer<void>();
-      _gttsPlayer.onPlayerComplete.first.then((_) {
-        if (!completer.isCompleted) completer.complete();
-      });
-      await _gttsPlayer.play(UrlSource(absoluteUrl));
-
-      // Safety timeout — complete anyway if the completion event never fires
-      // (e.g. network drop mid-stream) so we don't hang forever.
-      await completer.future.timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {},
-      );
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<void> _speak(String text, {String? language}) async {
+  Future<void> _speak(
+    String text, {
+    String? language,
+    bool awaitCompletion = true,
+  }) async {
     final clean = _sanitizeForSpeech(text);
-    if (!_ttsReady || clean.isEmpty) return;
+    if (clean.isEmpty) return;
+    if (!_ttsReady) {
+      debugPrint('[VoiceOrderHandler] FlutterTts not ready');
+      return;
+    }
 
-    // Dedup: skip if we said the exact same thing within 10 s.
     final now = DateTime.now();
     if (clean == _lastAnnouncedMessage &&
         now.difference(_lastAnnouncementTime).inSeconds < 10) {
       return;
     }
 
-    // Serialize: if already speaking, stop whatever is playing first.
     if (_isSpeaking) {
       await _tts.stop();
       await _gttsPlayer.stop();
     }
     _isSpeaking = true;
 
-    // FREE UP THE MIC: stop the processing spinner so the user can interrupt the voice!
     if (_isProcessing) {
       _isProcessing = false;
       notifyListeners();
     }
 
     try {
-      final playedByGtts = await _speakWithBackendGtts(clean, language: language);
-      if (!playedByGtts) {
-        // FlutterTts fallback — stop gTTS just in case, then speak.
-        await _gttsPlayer.stop();
-        await _tts.stop();
-        if (language != null) {
-          await _tts.setLanguage(language == 'ur' ? 'ur-PK' : 'en-US');
-        }
-        await _tts.speak(clean);
-        // Await FlutterTts completion.
-        await _tts.awaitSpeakCompletion(true);
+      await _gttsPlayer.stop();
+      await _tts.stop();
+
+      if (language == 'en') {
+        await _tts.setLanguage('en-US');
+      } else if (language == 'ur') {
+        final langs = await _tts.getLanguages as List?;
+        final hasUrdu = langs?.any((l) {
+              final s = l.toString().toLowerCase();
+              return s.contains('ur') || s.contains('urdu');
+            }) ??
+            false;
+        await _tts.setLanguage(hasUrdu ? 'ur-PK' : 'en-US');
+      } else if (_isUrdu) {
+        await _applyTTSLang();
+      } else {
+        await _tts.setLanguage('en-US');
       }
+
+      await _tts.speak(clean);
+      if (awaitCompletion) {
+        await _tts.awaitSpeakCompletion(true);
+      } else {
+        await _tts.awaitSpeakCompletion(false);
+      }
+
+      _lastAnnouncedMessage = clean;
+      _lastAnnouncementTime = now;
+    } catch (e, st) {
+      debugPrint('[VoiceOrderHandler] FlutterTts failed: $e\n$st');
     } finally {
       _isSpeaking = false;
     }
-
-    _lastAnnouncedMessage = clean;
-    _lastAnnouncementTime = now;
   }
 
+  // --- User-facing copy (no raw exceptions in UI) -------------------------
+
+  String _msgErrConnection() => _isUrdu
+      ? 'انٹرنیٹ یا سرور تک رسائی نہیں — دوبارہ کوشش کریں'
+      : 'Can’t reach the server. Check your connection and try again.';
+
+  String _msgErrGeneric() => _isUrdu
+      ? 'مسئلہ ہوا — دوبارہ کوشش کریں'
+      : 'Something went wrong. Please try again.';
+
+  String _msgMicPermission() => _isUrdu
+      ? 'مائیکروفون کی اجازت درکار ہے'
+      : 'Microphone permission is required';
+
+  String _msgMicStartFailed() => _isUrdu
+      ? 'مائیک شروع نہیں ہو سکا — دوبارہ کوشش کریں'
+      : 'Couldn’t start the microphone. Try again.';
+
+  String _msgRecordingTooShort() => _isUrdu
+      ? 'ریکارڈنگ بہت چھوٹی ہے — دوبارہ بولیں'
+      : 'Recording was too short. Try again.';
+
+  String _msgNoTranscript() => _isUrdu
+      ? 'وائس سمجھ نہیں آئی — دوبارہ بولیں'
+      : 'Couldn’t understand. Please speak again.';
+
+  String _msgNoSpeechHeard() => _isUrdu
+      ? 'کچھ سنائی نہیں دیا'
+      : 'Nothing was heard';
+
+  String _msgSpeechNotAvailable() => _isUrdu
+      ? 'اس ڈیوائس پر اسپیچ سروس دستیاب نہیں'
+      : 'Speech recognition isn’t available on this device';
+
+  String _msgDealFailed() => _isUrdu
+      ? 'ڈیل مکمل نہیں ہو سکی — دوبارہ کوشش کریں'
+      : 'Couldn’t complete the deal. Try again.';
+
+  String _friendlyDealError(String raw) {
+    final t = raw.toLowerCase();
+    if (t.contains('socket') ||
+        t.contains('host lookup') ||
+        t.contains('connection refused') ||
+        t.contains('connection reset') ||
+        t.contains('timeout') ||
+        t.contains('network')) {
+      return _msgErrConnection();
+    }
+    return _msgDealFailed();
+  }
 
   /// Removes markdown decorations (`**`, `__`, `#`, backticks, bullets) and
   /// emojis so text-to-speech reads a natural sentence instead of announcing
@@ -836,6 +893,43 @@ class VoiceOrderHandler extends ChangeNotifier {
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ));
+  }
+
+  /// Server routing: NLP intent + tool chain (same JSON as `/voice_chat` / `/chat`).
+  void _snackVoiceServerRouting(
+    BuildContext context,
+    String said,
+    String intentBlock,
+  ) {
+    if (!context.mounted) return;
+    final line1 =
+        _isUrdu ? 'آپ نے کہا: $said' : 'You said: $said';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                line1,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                intentBlock,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.92),
+                ),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 6),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   void _snackError(BuildContext context, String msg) {

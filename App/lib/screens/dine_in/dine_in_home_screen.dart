@@ -34,7 +34,7 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
     'chinese': 'assets/images/menu/chinese/kung pao chicken.png',
     'desi': 'assets/images/menu/desi/chicken_karahi.jpeg',
     'drinks': 'assets/images/menu/drinks/cola.jpg',
-    'fast_food': 'assets/images/menu/fast_food/cheeseburger.png',
+    'fast_food': 'assets/images/confirm.png',
   };
 
   void _navigateKioskTab(int index) {
@@ -520,11 +520,9 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
 
   String _resolveImagePath(Map<String, dynamic> item) {
     final imageUrl = (item['image_url'] ?? '').toString().trim();
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return imageUrl;
-    }
-    if (imageUrl.startsWith('/') && !imageUrl.startsWith('/assets/')) {
-      return '${ApiConfig.baseUrl}$imageUrl';
+    final resolved = ApiConfig.resolvePublicImageUrl(imageUrl);
+    if (resolved != null) {
+      return resolved;
     }
 
     // For local or malformed asset paths, prefer known good bundled assets.
@@ -539,7 +537,10 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
       return ImageResolver.getDealImage(name);
     }
 
-    final category = (item['item_category'] ?? 'fast_food').toString();
+    final cuisine = (item['item_cuisine'] ?? '').toString().trim();
+    final category = cuisine.isNotEmpty
+        ? ImageResolver.normalizeCuisineForMenuImage(cuisine)
+        : (item['item_category'] ?? 'fast_food').toString();
     final resolved = ImageResolver.getMenuImage(category, name);
     if (resolved == ImageResolver.fallbackImage &&
         _categoryFallbackImages.containsKey(category.toLowerCase())) {

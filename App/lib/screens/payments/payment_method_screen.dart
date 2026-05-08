@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'add_payment_screen.dart';
+import 'package:khaadim/app_config.dart';
 import 'package:khaadim/services/card_service.dart';
 import 'package:khaadim/widgets/mic_button.dart';
 import 'package:khaadim/widgets/voice_nav_callbacks.dart';
@@ -117,6 +118,19 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     setState(() => _loading = true);
 
     try {
+      // Kiosk guests don't use account-bound saved cards (`/cards` needs auth).
+      if (AppConfig.isKiosk) {
+        if (!mounted) return;
+        setState(() {
+          _cards = [];
+          if (_selectedMethod == 'CARD') {
+            _selectedMethod = 'COD';
+            _selectedCardId = null;
+          }
+        });
+        return;
+      }
+
       final cards = await CardService.getSavedCards();
 
       if (!mounted) return;
@@ -137,10 +151,13 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load cards: $e')),
-      );
+      final msg = e.toString().toLowerCase();
+      final unauthorized = msg.contains('401') || msg.contains('unauthorized');
+      if (!unauthorized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load cards: $e')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _loading = false);

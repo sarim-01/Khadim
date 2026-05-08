@@ -15,6 +15,8 @@ dependencies:
     sdk: flutter
 
   flutter_sound: ^9.2.13
+  flutter_local_notifications: ^17.2.2
+  flutter_timezone: ^3.0.1
   permission_handler: ^11.0.1
   just_audio: ^0.9.36
   flutter_rating_bar: ^4.0.1
@@ -25,16 +27,24 @@ dependencies:
   cupertino_icons: ^1.0.8
   path_provider: ^2.0.15
   flutter_secure_storage: ^9.2.2
-  fl_chart: ^1.2.0
-  flutter_local_notifications: ^17.2.3
-  shared_preferences: ^2.3.2
+  shared_preferences: ^2.2.3
   timezone: ^0.9.4
-  flutter_timezone: ^5.0.0
+  fl_chart: ^1.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  # Square PNG works best at 1024×1024; smaller sources are scaled.
+  image_path: assets/images/khaadim_logo_dark.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/khaadim_logo_dark.png
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
@@ -42,18 +52,14 @@ flutter:
   assets:
     - assets/images/khaadim_logo_dark.png
     - assets/images/khaadim_logo_light.png
+    - assets/images/confirm.png
     - assets/images/menu/bbq/
     - assets/images/menu/bread/
     - assets/images/menu/chinese/
     - assets/images/menu/desi/
     - assets/images/menu/drinks/
     - assets/images/menu/fast_food/
-    - assets/images/deals/
-    # Flutter asset folders are NOT recursive — every deal subfolder needs
-    # its own entry, otherwise the files inside aren't bundled and every
-    # deal card falls back to `confirm.png` (the green checkmark).
     - assets/images/deals/BBQ deals/
     - assets/images/deals/Chinese Deals/
     - assets/images/deals/Desi deals/
     - assets/images/deals/FastFood deals/
-    - assets/images/confirm.png

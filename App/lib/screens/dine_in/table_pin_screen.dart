@@ -179,7 +179,7 @@ class _TablePinScreenState extends State<TablePinScreen> {
                             ],
                             decoration: const InputDecoration(
                               labelText: 'PIN',
-                              hintText: '6-digit PIN',
+                              hintText: '4 to 6 digit PIN',
                               prefixIcon: Icon(Icons.lock_outline),
                             ),
                             validator: (value) {
@@ -187,8 +187,8 @@ class _TablePinScreenState extends State<TablePinScreen> {
                               if (pin.isEmpty) {
                                 return 'Please enter your PIN';
                               }
-                              if (pin.length != 6) {
-                                return 'PIN must be 6 digits';
+                              if (pin.length < 4 || pin.length > 6) {
+                                return 'PIN must be 4 to 6 digits';
                               }
                               return null;
                             },

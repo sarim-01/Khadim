@@ -8,6 +8,7 @@
 //
 // Uses your EXISTING endpoints — no new backend code needed.
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -105,12 +106,12 @@ class VoiceCustomDealService {
           ? voiceFromBackend
           : _sanitizeForSpeech(summaryMsg);
 
-      await _speak(spokenText, language: language);
-
-      // ── Step 2: Show confirmation dialog ──────────────────
+      // Speak and show the confirmation sheet together (guest sees items
+      // while the summary plays — no serial wait on TTS).
       if (!context.mounted) {
         return VoiceCustomDealResult(confirmed: false);
       }
+      final speakFuture = _speak(spokenText, language: language);
       final confirmed = await _showConfirmDialog(
         context:    context,
         items:      items,
@@ -118,6 +119,8 @@ class VoiceCustomDealService {
         fullMsg:    fullMsg,
         language:   language,
       );
+      // Do not block confirmation on TTS length — audio continues in background.
+      unawaited(speakFuture);
 
       if (!confirmed) {
         await _speak(language == 'ur' ? 'ٹھیک ہے، ڈیل کینسل' : 'Deal cancelled.', language: language);

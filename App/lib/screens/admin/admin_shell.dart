@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_client.dart';
 import '../../services/token_storage.dart';
-import 'admin_login_screen.dart';          // ← changed import
-import '../navigation/main_screen.dart';
 import 'overview_screen.dart';
 import 'revenue_screen.dart';
 import 'trends_screen.dart';
@@ -25,9 +23,9 @@ class _AdminShellState extends State<AdminShell> {
   bool _checkingAccess = true;
   String? _accessError;
 
-  final Color _bgDark    = const Color(0xFF07090F);
+  final Color _bgDark = const Color(0xFF07090F);
   final Color _bgSidebar = const Color(0xFF0D111C);
-  final Color _accent    = const Color(0xFF6366F1);
+  final Color _accent = const Color(0xFF6366F1);
 
   final List<Widget> _screens = const [
     OverviewScreen(),
@@ -45,13 +43,13 @@ class _AdminShellState extends State<AdminShell> {
   ];
 
   final List<Map<String, dynamic>> _navItems = [
-    {'label': 'Overview',          'icon': Icons.dashboard_outlined},
-    {'label': 'Revenue',           'icon': Icons.attach_money},
-    {'label': 'Trends',            'icon': Icons.trending_up},
-    {'label': 'Reviews',           'icon': Icons.comment_outlined},
+    {'label': 'Overview', 'icon': Icons.dashboard_outlined},
+    {'label': 'Revenue', 'icon': Icons.attach_money},
+    {'label': 'Trends', 'icon': Icons.trending_up},
+    {'label': 'Reviews', 'icon': Icons.comment_outlined},
     {'label': 'Agent Performance', 'icon': Icons.smart_toy_outlined},
-    {'label': 'AI Suggestions',    'icon': Icons.lightbulb_outline},
-    {'label': 'Restaurant',        'icon': Icons.table_restaurant},
+    {'label': 'AI Suggestions', 'icon': Icons.lightbulb_outline},
+    {'label': 'Restaurant', 'icon': Icons.table_restaurant},
   ];
 
   @override
@@ -75,7 +73,7 @@ class _AdminShellState extends State<AdminShell> {
   Future<void> _validateAdminAccess() async {
     try {
       final data = await AuthService.me().timeout(const Duration(seconds: 8));
-      final user  = data['user'] ?? data;
+      final user = data['user'] ?? data;
       final email = (user['email'] ?? '').toString().toLowerCase();
 
       if (!mounted) return;
@@ -86,16 +84,16 @@ class _AdminShellState extends State<AdminShell> {
       }
 
       setState(() {
-        _adminName      = user['full_name'] ?? 'Admin';
-        _isLoadingName  = false;
+        _adminName = user['full_name'] ?? 'Admin';
+        _isLoadingName = false;
         _checkingAccess = false;
-        _accessError    = null;
+        _accessError = null;
       });
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
           _checkingAccess = false;
-          _accessError    = e.message;
+          _accessError = e.message;
         });
       }
       if (e.isUnauthorized) {
@@ -106,7 +104,7 @@ class _AdminShellState extends State<AdminShell> {
       if (mounted) {
         setState(() {
           _checkingAccess = false;
-          _accessError    = 'Unable to verify admin access';
+          _accessError = 'Unable to verify admin access';
         });
       }
       await TokenStorage.clearToken();
@@ -150,7 +148,7 @@ class _AdminShellState extends State<AdminShell> {
                   onPressed: () {
                     setState(() {
                       _checkingAccess = true;
-                      _accessError    = null;
+                      _accessError = null;
                     });
                     _validateAdminAccess();
                   },
@@ -235,19 +233,20 @@ class _AdminShellState extends State<AdminShell> {
                         Expanded(
                           child: _isLoadingName
                               ? const SizedBox(
-                            height: 12,
-                            width: 12,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                                  height: 12,
+                                  width: 12,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
                               : Text(
-                            _adminName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                                  _adminName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                         ),
                       ],
                     ),
@@ -258,8 +257,8 @@ class _AdminShellState extends State<AdminShell> {
                         icon: const Icon(Icons.logout,
                             size: 16, color: Colors.white70),
                         label: const Text('Sign out',
-                            style: TextStyle(
-                                color: Colors.white70, fontSize: 13)),
+                            style:
+                                TextStyle(color: Colors.white70, fontSize: 13)),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: Colors.white24),
                           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -325,7 +324,8 @@ class _AdminShellState extends State<AdminShell> {
             child: Row(
               children: [
                 Container(
-                  width: 6, height: 6,
+                  width: 6,
+                  height: 6,
                   decoration: const BoxDecoration(
                     color: Colors.greenAccent,
                     shape: BoxShape.circle,
@@ -363,7 +363,7 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   Widget _buildNavItem(int index) {
-    final item       = _navItems[index];
+    final item = _navItems[index];
     final isSelected = _currentIndex == index;
 
     return Container(
@@ -382,15 +382,13 @@ class _AdminShellState extends State<AdminShell> {
               style: TextStyle(
                 color: isSelected ? _accent : Colors.white70,
                 fontSize: 13,
-                fontWeight:
-                isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               )),
           onTap: () => setState(() => _currentIndex = index),
           mouseCursor: SystemMouseCursors.click,
           hoverColor: _accent.withOpacity(0.10),
           dense: true,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );

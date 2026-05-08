@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'themes/app_theme.dart';
 import 'app_config.dart';
+import 'main_admin.dart';
+import 'main_kiosk.dart';
 
 // Providers
 import 'providers/cart_provider.dart';
@@ -28,8 +31,23 @@ import 'package:khaadim/screens/dine_in/dine_in_home_screen.dart';
 import 'package:khaadim/screens/dine_in/my_table_screen.dart';
 import 'package:khaadim/services/reengagement_service.dart';
 
-void main() {
-  AppConfig.flavor = AppFlavor.customer; // ← ADDED
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Android `--flavor` name is injected here; `--flavor` alone does NOT change `-t`/entrypoint,
+  // so we route kiosk/admin from Gradle flavor strings.
+  final flavor = appFlavor ?? 'customer';
+
+  if (flavor == 'kiosk') {
+    await runKioskFlavor();
+    return;
+  }
+  if (flavor == 'admin') {
+    runAdminFlavor();
+    return;
+  }
+
+  AppConfig.flavor = AppFlavor.customer;
   runApp(
     MultiProvider(
       providers: [

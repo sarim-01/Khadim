@@ -15,9 +15,31 @@ class ApiConfig {
       return 'http://localhost:8000';
     }
 
-    // Mobile default: physical devices should use host PC LAN IP.
-    // For Android emulator, run with:
-    // --dart-define=API_BASE_URL=http://10.0.2.2:8000
-    return 'http://192.168.100.30:8000';
+    // Mobile default: PC Wi‑Fi IPv4 (your IP changes when you switch networks).
+    // Override per network: flutter run ... --dart-define=API_BASE_URL=http://...
+    // Android emulator: http://10.0.2.2:8000
+    return 'http://192.168.18.25:8000';
+  }
+
+  /// Turns API `image_url` values into an absolute URL when the server returns
+  /// `/uploads/...`, `uploads/...`, or other app-relative paths (not bundled assets).
+  /// Returns null when [raw] should be handled as a local asset path instead.
+  static String? resolvePublicImageUrl(String? raw) {
+    if (raw == null) return null;
+    final t = raw.trim();
+    if (t.isEmpty) return null;
+    if (t.startsWith('http://') || t.startsWith('https://')) {
+      return t;
+    }
+    if (t.startsWith('assets/') || t.startsWith('/assets/')) {
+      return null;
+    }
+    final base = baseUrl.replaceAll(RegExp(r'/$'), '');
+    if (t.startsWith('/') && !t.startsWith('/assets/')) {
+      return '$base$t';
+    }
+    // No scheme and not a Flutter asset: treat as path on the API host.
+    final path = t.startsWith('/') ? t : '/$t';
+    return '$base$path';
   }
 }

@@ -4,6 +4,7 @@ import 'package:khaadim/models/menu_item.dart';
 import 'package:khaadim/providers/dine_in_provider.dart';
 import 'package:khaadim/screens/dine_in/kiosk_bottom_nav.dart';
 import 'package:khaadim/services/menu_service.dart';
+import 'package:khaadim/services/api_config.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/widgets/kiosk_voice_fab.dart';
@@ -247,39 +248,6 @@ class _MenuScreenState extends State<MenuScreen> {
     });
   }
 
-  final Map<String, String> localMenuImages = {
-    "Burger": "assets/images/menu/fast_food/burger.jpeg",
-    "Chicken Burger": "assets/images/menu/fast_food/chicken_burger.jpeg",
-    "Fries": "assets/images/menu/fast_food/fries.jpeg",
-    "Loaded Fries": "assets/images/menu/fast_food/loaded_fries.jpeg",
-    "Nuggets": "assets/images/menu/fast_food/nuggets.jpeg",
-    "Beef Boti": "assets/images/menu/bbq/beef_boti.jpeg",
-    "Chicken Tikka": "assets/images/menu/bbq/chicken_tikka.jpeg",
-    "Grilled Fish": "assets/images/menu/bbq/grilled_fish.jpeg",
-    "Malai Boti": "assets/images/menu/bbq/malai_boti.jpeg",
-    "Reshmi Kebab": "assets/images/menu/bbq/reshmi_kebab.jpeg",
-    "Garlic Naan": "assets/images/menu/bread/garlic_naan.jpeg",
-    "Naan": "assets/images/menu/bread/naan.jpeg",
-    "Paratha": "assets/images/menu/bread/paratha.jpeg",
-    "Roti": "assets/images/menu/bread/roti.jpeg",
-    "Chow Mein": "assets/images/menu/chinese/chow_mein.jpeg",
-    "Hot Sour Soup": "assets/images/menu/chinese/hot_sour_soup.jpeg",
-    "Kung Pao": "assets/images/menu/chinese/kung_pao.jpeg",
-    "Manchurian": "assets/images/menu/chinese/manchurian.jpeg",
-    "Spring Rolls": "assets/images/menu/chinese/spring_rolls.jpeg",
-    "Biryani": "assets/images/menu/desi/biryani.jpeg",
-    "Chana Chaat": "assets/images/menu/desi/chana_chaat.jpeg",
-    "Chicken Karahi": "assets/images/menu/desi/chicken_karahi.jpeg",
-    "Daal Chawal": "assets/images/menu/desi/daal_chawal.jpeg",
-    "Nihari": "assets/images/menu/desi/nihari.jpeg",
-    "Samosa": "assets/images/menu/desi/samosa.jpeg",
-    "Chai": "assets/images/menu/drinks/chai.jpeg",
-    "Cola": "assets/images/menu/drinks/cola.jpeg",
-    "Iced Coffee": "assets/images/menu/drinks/iced_coffee.jpeg",
-    "Lemonade": "assets/images/menu/drinks/lemonade.jpeg",
-    "Mint Margarita": "assets/images/menu/drinks/mint_margarita.jpeg",
-  };
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -486,20 +454,23 @@ class _MenuItemCardState extends State<_MenuItemCard> {
   }
 
   Widget _menuImage() {
-    final url = widget.item.imageUrl.trim();
-    final hasUrl =
-        url.isNotEmpty && (url.startsWith('http://') || url.startsWith('https://'));
-    if (hasUrl) {
-      return Image.network(url,
-          height: 110, width: 110, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallbackImage());
+    final raw = widget.item.imageUrl.trim();
+    final networkUrl = ApiConfig.resolvePublicImageUrl(raw);
+    if (networkUrl != null) {
+      return Image.network(
+        networkUrl,
+        height: 110,
+        width: 110,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _fallbackImage(),
+      );
     }
     return _fallbackImage();
   }
 
   Widget _fallbackImage() {
-    final category =
-        widget.item.itemCuisine.toLowerCase().replaceAll(' ', '_');
+    final category = ImageResolver.normalizeCuisineForMenuImage(
+        widget.item.itemCuisine);
     final fallback = ImageResolver.getMenuImage(category, widget.item.itemName);
     return Image.asset(fallback,
         height: 110, width: 110, fit: BoxFit.cover,

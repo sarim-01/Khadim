@@ -12,7 +12,8 @@ import 'package:khaadim/screens/orders/order_tracking_screen.dart';
 import 'package:khaadim/themes/app_theme.dart';
 import 'package:provider/provider.dart';
 
-Future<void> main() async {
+/// Used by [main] in `main.dart` when Android/iOS `--flavor kiosk` matches.
+Future<void> runKioskFlavor() async {
   WidgetsFlutterBinding.ensureInitialized();
   AppConfig.flavor = AppFlavor.kiosk;
 
@@ -29,6 +30,8 @@ Future<void> main() async {
     ),
   );
 }
+
+Future<void> main() => runKioskFlavor();
 
 class KhadimKioskApp extends StatelessWidget {
   final bool hasActiveSession;

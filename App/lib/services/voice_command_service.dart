@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 
 import 'package:khaadim/app_config.dart';
@@ -10,10 +9,12 @@ import 'package:khaadim/services/chat_service.dart';
 import 'package:khaadim/services/conversation_memory.dart';
 import 'package:khaadim/services/dine_in_service.dart';
 import 'package:khaadim/services/voice_deal_service.dart';
+import 'package:khaadim/models/cart_item.dart';
 import 'package:khaadim/providers/cart_provider.dart';
 import 'package:khaadim/widgets/voice_nav_callbacks.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/providers/favourites_notifier.dart';
+import 'package:khaadim/utils/order_status_guest_copy.dart';
 
 double _stringSimilarity(String a, String b) {
   if (a.isEmpty || b.isEmpty) return 0;
@@ -62,13 +63,75 @@ class VoiceCommandResult {
   final String transcript;
   final bool navigated;
 
+  /// Short multi-line summary from server JSON (`nlp`, `tool_calls`, `signals`).
+  final String? intentLine;
+
   const VoiceCommandResult({
     this.success = false,
     this.actionTaken = '',
     this.reply = '',
     this.transcript = '',
     this.navigated = false,
+    this.intentLine,
   });
+}
+
+/// Short, guest-friendly line(s) for an on-screen toast (no toolchain jargon).
+String? formatServerIntentSummary(
+  Map<String, dynamic>? response, {
+  required String language,
+}) {
+  if (response == null) return null;
+  final tc = (response['tool_calls'] as List?) ?? <dynamic>[];
+  final names = <String>[];
+  for (final c in tc) {
+    if (c is Map) {
+      final n = (c['name'] ?? '').toString().trim();
+      if (n.isNotEmpty) names.add(n);
+    }
+  }
+  if (names.isEmpty) return null;
+
+  final ur = language.toLowerCase() == 'ur';
+  String lbl(String name) {
+    switch (name) {
+      case 'add_to_cart':
+        return ur ? 'کارٹ میں شامل کر رہا ہوں' : 'Adding to your cart';
+      case 'remove_from_cart':
+        return ur ? 'کارٹ سے ہٹا رہا ہوں' : 'Removing from your cart';
+      case 'clear_cart':
+        return ur ? 'کارٹ خالی کر رہا ہوں' : 'Clearing your cart';
+      case 'change_quantity':
+        return ur ? 'کارٹ کی مقدار بدل رہا ہوں' : 'Updating cart quantity';
+      case 'show_cart':
+        return ur ? 'کارٹ دکھا رہا ہوں' : 'Opening your cart';
+      case 'place_order':
+        return ur ? 'آرڈر کے اگلے مرحلے پر' : 'Moving to checkout';
+      case 'settle_payment':
+        return ur ? 'ادائیگی پر' : 'Showing payment';
+      case 'get_order_status':
+      case 'order_status':
+        return ur ? 'آپ کے آرڈر کی حالت' : 'Checking your order';
+      case 'search_menu':
+        return ur ? 'مینو ڈھونڈ رہا ہوں' : 'Browsing the menu';
+      case 'search_deal':
+        return ur ? 'ڈیل ڈھونڈ رہا ہوں' : 'Looking for deals';
+      case 'create_custom_deal':
+        return ur ? 'کسٹم ڈیل بنانے میں' : 'Building a custom deal';
+      case 'navigate_to':
+        return ur ? 'اسکرین بدل رہا ہوں' : 'Opening a screen';
+      case 'call_waiter':
+        return ur ? 'ویٹر کو بلا رہا ہوں' : 'Calling a waiter';
+      case 'get_recommendations':
+        return ur ? 'سفارشات نکال رہا ہوں' : 'Fetching suggestions';
+      default:
+        return ur ? 'کارروائی مکمل ہو رہی ہے' : 'Working on your request';
+    }
+  }
+
+  if (names.length == 1) return lbl(names.first);
+  final lines = names.map(lbl).join(ur ? '، پھر ' : ', then ');
+  return ur ? lines : lines;
 }
 
 /// Callback used by the Kiosk to add items to `DineInProvider` instead of
@@ -103,8 +166,11 @@ class VoiceCommandService {
     'botiay': 'boti',
   };
 
-  VoiceCommandService({FlutterTts? tts, DineInAddItemCallback? dineInAddItem}) {
-    _dealService = VoiceDealService(tts ?? FlutterTts());
+  VoiceCommandService({
+    required Future<void> Function(String text) onSpeak,
+    DineInAddItemCallback? dineInAddItem,
+  }) {
+    _dealService = VoiceDealService(onSpeak);
     _dineInAddItem = dineInAddItem;
   }
 
@@ -142,6 +208,13 @@ class VoiceCommandService {
         toolCalls,
       );
 
+      final mergedForDisplay = Map<String, dynamic>.from(response);
+      mergedForDisplay['tool_calls'] = toolCalls;
+      final summary = formatServerIntentSummary(
+        mergedForDisplay,
+        language: language,
+      );
+
       if (toolCalls.isEmpty) {
         final menuItems = response['menu_items'] as List? ?? [];
         final deals = response['deals'] as List? ?? [];
@@ -152,6 +225,7 @@ class VoiceCommandService {
               : 'general_reply',
           reply: reply,
           transcript: transcript,
+          intentLine: summary,
         );
       }
 
@@ -163,6 +237,7 @@ class VoiceCommandService {
         language: language,
         nav: nav,
         memory: memory,
+        serverIntentSummary: summary,
       );
     } catch (_) {
       return const VoiceCommandResult(success: false);
@@ -195,10 +270,20 @@ class VoiceCommandService {
     String? method;
     // Cash keywords (English / Roman-Urdu / Urdu script).
     const cashKeys = [
-      'cash', 'naqad', 'naqd', 'نقد', 'کیش', 'کیاش',
+      'cash',
+      'naqad',
+      'naqd',
+      'نقد',
+      'کیش',
+      'کیاش',
     ];
     const cardKeys = [
-      'card', 'kaard', 'credit', 'debit', 'کارڈ', 'گاڈ',
+      'card',
+      'kaard',
+      'credit',
+      'debit',
+      'کارڈ',
+      'گاڈ',
     ];
     for (final k in cashKeys) {
       if (raw.contains(k) || transcript.contains(k)) {
@@ -264,6 +349,7 @@ class VoiceCommandService {
     required String language,
     required VoiceNavCallbacks? nav,
     ConversationMemory? memory,
+    String? serverIntentSummary,
   }) async {
     String lastAction = '';
     bool navigated = false;
@@ -274,7 +360,6 @@ class VoiceCommandService {
     // every add-to-cart and the duplicate-guard silences it.
     String effectiveReply = reply.trim();
     int addedCount = 0;
-    int failedCount = 0;
     final List<String> addedNames = <String>[];
 
     for (final call in toolCalls) {
@@ -290,8 +375,6 @@ class VoiceCommandService {
             addedCount++;
             final itemName = (args['item_name'] ?? '').trim();
             if (itemName.isNotEmpty) addedNames.add(itemName);
-          } else {
-            failedCount++;
           }
           lastAction = ok ? 'added_to_cart' : 'item_not_found';
           // Only override the reply if the backend didn't already give us
@@ -301,6 +384,20 @@ class VoiceCommandService {
               language,
               urdu: 'آئٹم نہیں ملا۔',
               english: 'Item not found.',
+            );
+          }
+          continue;
+
+        case 'clear_cart':
+          final cleared = await _clearEntireCart(context);
+          lastAction = cleared ? 'cart_cleared' : 'item_not_found';
+          if (effectiveReply.isEmpty) {
+            effectiveReply = _localized(
+              language,
+              urdu: cleared ? 'کارٹ خالی کر دی گئی۔' : 'کارٹ خالی نہیں ہو سکی۔',
+              english: cleared
+                  ? 'Your cart is now empty.'
+                  : 'Could not clear the cart.',
             );
           }
           continue;
@@ -496,6 +593,7 @@ class VoiceCommandService {
               actionTaken: 'custom_deal',
               reply: dealResult.message,
               transcript: dealResult.customDealQuery,
+              intentLine: serverIntentSummary,
             );
           }
 
@@ -509,6 +607,7 @@ class VoiceCommandService {
               actionTaken: 'deal_suggest_custom',
               reply: dealResult.message,
               transcript: pendingQuery,
+              intentLine: serverIntentSummary,
             );
           }
 
@@ -538,7 +637,8 @@ class VoiceCommandService {
                 try {
                   int? reqItemId;
                   int? reqDealId;
-                  if (itemType == 'menu_item') reqItemId = itemId;
+                  if (itemType == 'menu_item')
+                    reqItemId = itemId;
                   else if (itemType == 'deal') reqDealId = itemId;
 
                   final res = await FavouritesService.toggleFavourite(
@@ -553,9 +653,11 @@ class VoiceCommandService {
 
                   // Notify notifier so heart icons update without a reload.
                   if (itemType == 'menu_item') {
-                    FavouritesNotifier.instance.updateItem(itemId, added: wasAdded);
+                    FavouritesNotifier.instance
+                        .updateItem(itemId, added: wasAdded);
                   } else if (itemType == 'deal') {
-                    FavouritesNotifier.instance.updateDeal(itemId, added: wasAdded);
+                    FavouritesNotifier.instance
+                        .updateDeal(itemId, added: wasAdded);
                   }
 
                   if (effectiveReply.isEmpty) {
@@ -571,13 +673,16 @@ class VoiceCommandService {
                   }
                 } catch (_) {
                   if (effectiveReply.isEmpty) {
-                    effectiveReply = _localized(language, urdu: 'ایک مسئلہ پیش آیا۔', english: 'An error occurred.');
+                    effectiveReply = _localized(language,
+                        urdu: 'ایک مسئلہ پیش آیا۔',
+                        english: 'An error occurred.');
                   }
                 }
               }
             } else {
               if (effectiveReply.isEmpty) {
-                effectiveReply = _localized(language, urdu: 'آئٹم نہیں ملا۔', english: 'Item not found.');
+                effectiveReply = _localized(language,
+                    urdu: 'آئٹم نہیں ملا۔', english: 'Item not found.');
               }
             }
           }
@@ -590,7 +695,8 @@ class VoiceCommandService {
             lastAction = 'recommendations';
             continue;
           }
-          final recommendationReply = await ChatService().getVoiceRecommendations(language: language);
+          final recommendationReply =
+              await ChatService().getVoiceRecommendations(language: language);
           if (recommendationReply.isNotEmpty) {
             effectiveReply = recommendationReply;
           } else if (effectiveReply.trim().isEmpty) {
@@ -614,6 +720,7 @@ class VoiceCommandService {
             actionTaken: 'custom_deal',
             reply: reply,
             transcript: userQuery,
+            intentLine: serverIntentSummary,
           );
 
         case 'retrieve_menu_context':
@@ -638,7 +745,8 @@ class VoiceCommandService {
 
     if (lastAction == 'added_to_cart' ||
         lastAction == 'removed_from_cart' ||
-        lastAction == 'quantity_changed') {
+        lastAction == 'quantity_changed' ||
+        lastAction == 'cart_cleared') {
       if (!AppConfig.isKiosk && context.mounted) {
         Provider.of<CartProvider>(context, listen: false).sync();
       }
@@ -663,7 +771,8 @@ class VoiceCommandService {
         } else if (uniqueNames.isNotEmpty) {
           final head =
               uniqueNames.sublist(0, uniqueNames.length - 1).join('، ');
-          effectiveReply = '$head اور ${uniqueNames.last} کارٹ میں شامل کر دیے۔';
+          effectiveReply =
+              '$head اور ${uniqueNames.last} کارٹ میں شامل کر دیے۔';
         } else {
           effectiveReply = 'آئٹم کارٹ میں شامل کر دیا۔';
         }
@@ -676,8 +785,7 @@ class VoiceCommandService {
         } else if (uniqueNames.isNotEmpty) {
           final head =
               uniqueNames.sublist(0, uniqueNames.length - 1).join(', ');
-          effectiveReply =
-              'Added $head and ${uniqueNames.last} to your cart.';
+          effectiveReply = 'Added $head and ${uniqueNames.last} to your cart.';
         } else {
           effectiveReply = 'Item added to cart.';
         }
@@ -690,6 +798,7 @@ class VoiceCommandService {
       reply: effectiveReply,
       transcript: transcript,
       navigated: navigated,
+      intentLine: serverIntentSummary,
     );
   }
 
@@ -707,7 +816,8 @@ class VoiceCommandService {
     return language.toLowerCase() == 'ur' ? urdu : english;
   }
 
-  Future<String> _placeDineInOrder(BuildContext context, String language) async {
+  Future<String> _placeDineInOrder(
+      BuildContext context, String language) async {
     final dineIn = Provider.of<DineInProvider>(context, listen: false);
     final sessionId = (dineIn.sessionId ?? '').trim();
 
@@ -945,7 +1055,8 @@ class VoiceCommandService {
       final allPaid = rounds.every((r) {
         final paidFlag = r['is_paid'] ?? r['paid'];
         if (paidFlag != null) return parseBool(paidFlag);
-        final paymentStatus = (r['payment_status'] ?? '').toString().toLowerCase();
+        final paymentStatus =
+            (r['payment_status'] ?? '').toString().toLowerCase();
         if (paymentStatus == 'paid' || paymentStatus == 'settled') return true;
         final status = (r['status'] ?? '').toString().toLowerCase();
         return status == 'paid' || status == 'settled';
@@ -959,15 +1070,15 @@ class VoiceCommandService {
       }
 
       final allCompleted = rounds.every((r) {
-        final ks = (r['kitchen_status'] ?? r['status'] ?? '')
-            .toString()
-            .toLowerCase();
+        final ks =
+            (r['kitchen_status'] ?? r['status'] ?? '').toString().toLowerCase();
         return ks == 'completed' || ks == 'served';
       });
       if (!allCompleted) {
         return _localized(
           language,
-          urdu: 'پہلے تمام راؤنڈز کا کچن میں مکمل ہونا ضروری ہے، پھر ادائیگی ہو سکے گی۔',
+          urdu:
+              'پہلے تمام راؤنڈز کا کچن میں مکمل ہونا ضروری ہے، پھر ادائیگی ہو سکے گی۔',
           english:
               'Payment unlocks after all rounds are completed in the kitchen.',
         );
@@ -1059,23 +1170,25 @@ class VoiceCommandService {
             orderId,
             token: dineIn.token,
           );
-          status =
-              (tracking['status'] ?? status).toString().toLowerCase();
+          status = (tracking['status'] ?? status).toString().toLowerCase();
           eta = _asInt(tracking['estimated_prep_time_minutes']) ?? eta;
         } catch (_) {
           // Keep session-order snapshot if tracking call fails.
         }
       }
 
+      final friendlyUr = friendlyDineInKitchenLine(status, ur: true);
+      final friendlyEn = friendlyDineInKitchenLine(status, ur: false);
+
       if (language.toLowerCase() == 'ur') {
-        final etaPart = eta > 0 ? ' اندازاً $eta منٹ باقی ہیں۔' : ' وقت جلد اپڈیٹ ہوگا۔';
-        return 'آخری آرڈر کی حالت: ${status.toUpperCase()}۔$etaPart';
+        final etaPart = eta > 0 ? ' اندازاً $eta منٹ لگ سکتے ہیں۔' : '';
+        return '$friendlyUr$etaPart';
       }
 
       final etaPart = eta > 0
-          ? ' Estimated time left: $eta minutes.'
-          : ' Estimated time will update shortly.';
-      return 'Latest order status: ${status.toUpperCase()}.$etaPart';
+          ? ' About $eta minutes to go.'
+          : ' Timing will update shortly.';
+      return '$friendlyEn$etaPart';
     } catch (e) {
       final message = e.toString().replaceFirst('Exception: ', '').trim();
       if (message.isNotEmpty) return message;
@@ -1110,7 +1223,8 @@ class VoiceCommandService {
 
       final topDeals = dealsRaw
           .whereType<Map>()
-          .map((e) => (e['item_name'] ?? e['deal_name'] ?? '').toString().trim())
+          .map(
+              (e) => (e['item_name'] ?? e['deal_name'] ?? '').toString().trim())
           .where((name) => name.isNotEmpty)
           .take(1)
           .toList();
@@ -1124,13 +1238,17 @@ class VoiceCommandService {
       }
 
       if (language.toLowerCase() == 'ur') {
-        final menuPart = topMenu.isNotEmpty ? 'ٹاپ آئٹمز: ${topMenu.join('، ')}۔ ' : '';
-        final dealPart = topDeals.isNotEmpty ? 'ٹاپ ڈیل: ${topDeals.join('، ')}۔' : '';
+        final menuPart =
+            topMenu.isNotEmpty ? 'ٹاپ آئٹمز: ${topMenu.join('، ')}۔ ' : '';
+        final dealPart =
+            topDeals.isNotEmpty ? 'ٹاپ ڈیل: ${topDeals.join('، ')}۔' : '';
         return '$menuPart$dealPart'.trim();
       }
 
-      final menuPart = topMenu.isNotEmpty ? 'Top items: ${topMenu.join(', ')}. ' : '';
-      final dealPart = topDeals.isNotEmpty ? 'Top deal: ${topDeals.join(', ')}.' : '';
+      final menuPart =
+          topMenu.isNotEmpty ? 'Top items: ${topMenu.join(', ')}. ' : '';
+      final dealPart =
+          topDeals.isNotEmpty ? 'Top deal: ${topDeals.join(', ')}.' : '';
       return '$menuPart$dealPart'.trim();
     } catch (_) {
       return _localized(
@@ -1192,10 +1310,8 @@ class VoiceCommandService {
         if (menuItem != null) {
           final itemId = (menuItem['item_id'] as num?)?.toInt() ?? 0;
           if (itemId > 0) {
-            final resolvedName =
-                (menuItem['item_name'] as String? ?? itemName);
-            final price =
-                (menuItem['item_price'] as num?)?.toDouble() ?? 0.0;
+            final resolvedName = (menuItem['item_name'] as String? ?? itemName);
+            final price = (menuItem['item_price'] as num?)?.toDouble() ?? 0.0;
             return await _dineInAddItem!(
               itemId,
               'menu_item',
@@ -1210,10 +1326,8 @@ class VoiceCommandService {
         if (dealItem != null) {
           final dealId = _asInt(dealItem['deal_id']) ?? 0;
           if (dealId > 0) {
-            final resolvedName =
-                (dealItem['deal_name'] as String? ?? itemName);
-            final price =
-                (dealItem['deal_price'] as num?)?.toDouble() ?? 0.0;
+            final resolvedName = (dealItem['deal_name'] as String? ?? itemName);
+            final price = (dealItem['deal_price'] as num?)?.toDouble() ?? 0.0;
             return await _dineInAddItem!(
               dealId,
               'deal',
@@ -1403,13 +1517,51 @@ class VoiceCommandService {
     }
   }
 
+  Future<bool> _clearEntireCart(BuildContext context) async {
+    try {
+      if (_isKioskDineIn(context)) {
+        Provider.of<DineInProvider>(context, listen: false).clearOrder();
+        return true;
+      }
+      final cart = Provider.of<CartProvider>(context, listen: false);
+      final cartId = cart.cartId;
+      if (cartId == null) return false;
+      final snapshot = List<CartItem>.from(cart.items);
+      if (snapshot.isEmpty) return true;
+
+      for (final line in snapshot) {
+        final rawType = (line.type ?? 'menu_item').trim();
+        if (rawType.isEmpty) continue;
+        final parts = line.id.split(':');
+        final idStr = parts.length > 1 ? parts.last : line.id;
+        final itemId = int.tryParse(idStr) ?? 0;
+        if (itemId <= 0) continue;
+        await CartService.removeItem(
+          cartId: cartId,
+          itemType: rawType.isNotEmpty ? rawType : 'menu_item',
+          itemId: itemId,
+        );
+      }
+      if (context.mounted) {
+        await Provider.of<CartProvider>(context, listen: false).sync();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> _removeFromCart(
       BuildContext context, Map<String, String> args) async {
     try {
+      final nm = (args['item_name'] ?? '').trim().toUpperCase();
+      if (nm == 'ALL' || nm == '*' || nm == 'EVERYTHING') {
+        return _clearEntireCart(context);
+      }
       if (_isKioskDineIn(context)) {
         final dineIn = Provider.of<DineInProvider>(context, listen: false);
-        final target =
-            _findDineInItemByName(dineIn.currentOrderItems, args['item_name'] ?? '');
+        final target = _findDineInItemByName(
+            dineIn.currentOrderItems, args['item_name'] ?? '');
         if (target == null) return false;
         final itemId = _asInt(target['item_id']) ?? 0;
         if (itemId <= 0) return false;
@@ -1457,8 +1609,8 @@ class VoiceCommandService {
 
       if (_isKioskDineIn(context)) {
         final dineIn = Provider.of<DineInProvider>(context, listen: false);
-        final target =
-            _findDineInItemByName(dineIn.currentOrderItems, args['item_name'] ?? '');
+        final target = _findDineInItemByName(
+            dineIn.currentOrderItems, args['item_name'] ?? '');
         if (target == null) return false;
 
         final itemId = _asInt(target['item_id']) ?? 0;
@@ -1538,12 +1690,14 @@ class VoiceCommandService {
     if (target.isEmpty) return null;
 
     for (final item in items) {
-      final itemName = (item['item_name'] ?? '').toString().toLowerCase().trim();
+      final itemName =
+          (item['item_name'] ?? '').toString().toLowerCase().trim();
       if (itemName == target) return item;
     }
 
     for (final item in items) {
-      final itemName = (item['item_name'] ?? '').toString().toLowerCase().trim();
+      final itemName =
+          (item['item_name'] ?? '').toString().toLowerCase().trim();
       if (itemName.contains(target) || target.contains(itemName)) {
         return item;
       }

@@ -11,7 +11,6 @@
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:khaadim/services/api_config.dart';
@@ -36,8 +35,9 @@ class VoiceDealResult {
 }
 
 class VoiceDealService {
-  final FlutterTts _tts;
-  VoiceDealService(this._tts);
+  /// Single pipeline (e.g. backend gTTS) — same voice as [VoiceOrderHandler._speak].
+  final Future<void> Function(String text) _onSpeak;
+  VoiceDealService(this._onSpeak);
 
   Future<VoiceDealResult> handleDealSearch({
     required String cuisine,
@@ -251,7 +251,6 @@ class VoiceDealService {
 
   Future<void> _speak(String text) async {
     if (text.isEmpty) return;
-    await _tts.stop();
-    await _tts.speak(text);
+    await _onSpeak(text);
   }
 }

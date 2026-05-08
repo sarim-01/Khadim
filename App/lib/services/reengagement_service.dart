@@ -41,12 +41,12 @@ class ReengagementService {
     // Without setLocalLocation(), tz.local defaults to UTC — causing all scheduled
     // notifications to fire at wrong times or be silently dropped.
     tz.initializeTimeZones();
-    final tzInfo = await FlutterTimezone.getLocalTimezone();
-    final String timeZoneName = tzInfo.identifier;
+    final String timeZoneName = await FlutterTimezone.getLocalTimezone();
     tz.setLocalLocation(tz.getLocation(timeZoneName));
     print('[Reengagement] ⏰ Timezone set to: $timeZoneName');
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
     await _notifications.initialize(
@@ -56,15 +56,17 @@ class ReengagementService {
       },
     );
 
-    final androidImpl = _notifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidImpl = _notifications.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
 
     // Request notification permission
-    final bool? notifGranted = await androidImpl?.requestNotificationsPermission();
+    final bool? notifGranted =
+        await androidImpl?.requestNotificationsPermission();
     print('[Reengagement] Notification permission granted: $notifGranted');
 
     // Request exact alarm permission (needed for exactAllowWhileIdle)
-    final bool? exactGranted = await androidImpl?.requestExactAlarmsPermission();
+    final bool? exactGranted =
+        await androidImpl?.requestExactAlarmsPermission();
     print('[Reengagement] Exact alarm permission granted: $exactGranted');
 
     // Use permission_handler as fallback for Android 13+
@@ -89,14 +91,15 @@ class ReengagementService {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
 
-    final lastOpenedIso = prefs.getString('reengagement_last_opened_$activeUserId');
+    final lastOpenedIso =
+        prefs.getString('reengagement_last_opened_$activeUserId');
     final lastOpened =
         lastOpenedIso != null ? DateTime.tryParse(lastOpenedIso) : null;
-    await prefs.setString('reengagement_last_opened_$activeUserId', now.toIso8601String());
+    await prefs.setString(
+        'reengagement_last_opened_$activeUserId', now.toIso8601String());
 
-    final inactivityHours = lastOpened == null
-        ? 999
-        : now.difference(lastOpened).inHours;
+    final inactivityHours =
+        lastOpened == null ? 999 : now.difference(lastOpened).inHours;
 
     final favouritesPayload = await FavouritesService.getFavourites();
     final favCount = ((favouritesPayload['items'] as List?)?.length ?? 0) +
@@ -181,9 +184,8 @@ class ReengagementService {
     }
 
     // Exclude bread items from notifications
-    final filteredPool = pool
-        .where((r) => r.category.toLowerCase() != 'bread')
-        .toList();
+    final filteredPool =
+        pool.where((r) => r.category.toLowerCase() != 'bread').toList();
 
     // Pick randomly from the combined pool
     RecommendedItem? highlighted;
@@ -224,7 +226,8 @@ class ReengagementService {
       const Duration(minutes: _testInactivityDelayMinutes),
     );
 
-    print('[Reengagement] 🕐 Current local time: ${tz.TZDateTime.now(tz.local)}');
+    print(
+        '[Reengagement] 🕐 Current local time: ${tz.TZDateTime.now(tz.local)}');
     print('[Reengagement] 🔔 Scheduling notification for: $scheduleAt');
 
     try {
@@ -261,7 +264,8 @@ class ReengagementService {
   }
 
   Future<void> cancelPending() async {
-    print('[Reengagement] 🚫 Cancelling pending re-engagement notification (app opened)');
+    print(
+        '[Reengagement] 🚫 Cancelling pending re-engagement notification (app opened)');
     await _notifications.cancel(_reengagementNotificationId);
   }
 

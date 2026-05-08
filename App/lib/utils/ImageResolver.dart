@@ -1,4 +1,39 @@
 class ImageResolver {
+  /// Checked first: alternate spellings / legacy filenames used by the menu UI.
+  /// Paths must match real files under [assets/images/menu/].
+  static const Map<String, String> menuUiAliases = {
+    'Burger': 'assets/images/menu/fast_food/cheeseburger.png',
+    'Chicken Burger': 'assets/images/menu/fast_food/chicken_burger.png',
+    'Fries': 'assets/images/menu/fast_food/fries.jpeg',
+    'Loaded Fries': 'assets/images/menu/fast_food/loaded_fries.jpeg',
+    'Nuggets': 'assets/images/menu/fast_food/chicken nuggets.png',
+    'Beef Boti': 'assets/images/menu/bbq/beef_boti.jpeg',
+    'Chicken Tikka': 'assets/images/menu/bbq/chicken_tikka.jpeg',
+    'Grilled Fish': 'assets/images/menu/bbq/grilled_fish.jpeg',
+    'Malai Boti': 'assets/images/menu/bbq/malai_boti.jpeg',
+    'Reshmi Kebab': 'assets/images/menu/bbq/reshmi_kebab.jpeg',
+    'Garlic Naan': 'assets/images/menu/bread/garlic_naan.jpeg',
+    'Naan': 'assets/images/menu/bread/naan.jpeg',
+    'Paratha': 'assets/images/menu/bread/paratha.jpeg',
+    'Roti': 'assets/images/menu/bread/roti.jpeg',
+    'Chow Mein': 'assets/images/menu/chinese/chicken chow mein.png',
+    'Hot Sour Soup': 'assets/images/menu/chinese/hot and sour soup.png',
+    'Kung Pao': 'assets/images/menu/chinese/kung pao chicken.png',
+    'Manchurian': 'assets/images/menu/chinese/chicken manchurian.png',
+    'Spring Rolls': 'assets/images/menu/chinese/vagetable spring rolls.png',
+    'Biryani': 'assets/images/menu/desi/biryani.jpeg',
+    'Chana Chaat': 'assets/images/menu/desi/chana_chaat.jpeg',
+    'Chicken Karahi': 'assets/images/menu/desi/chicken_karahi.jpeg',
+    'Daal Chawal': 'assets/images/menu/desi/daal_chawal.jpeg',
+    'Nihari': 'assets/images/menu/desi/nihari.jpeg',
+    'Samosa': 'assets/images/menu/desi/samosa.jpeg',
+    'Chai': 'assets/images/menu/drinks/chai.jpeg',
+    'Cola': 'assets/images/menu/drinks/cola.jpg',
+    'Iced Coffee': 'assets/images/menu/drinks/iced_coffee.jpeg',
+    'Lemonade': 'assets/images/menu/drinks/lemonade.jpeg',
+    'Mint Margarita': 'assets/images/menu/drinks/mint_margarita.jpeg',
+  };
+
   // Keys match EXACT item_name values from the database.
   static const Map<String, String> exactMenuImages = {
 
@@ -131,13 +166,39 @@ class ImageResolver {
         .replaceAll("-", "_");
   }
 
-  // 1. Exact DB name match → 2. Normalised folder guess → 3. Fallback
+  /// Maps [item_cuisine] from the API to the keys used in [getMenuImage] fallbacks.
+  static String normalizeCuisineForMenuImage(String itemCuisine) {
+    final key = itemCuisine
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s\-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    switch (key) {
+      case 'fastfood':
+        return 'fast_food';
+      case 'barbeque':
+      case 'barbecue':
+        return 'bbq';
+      case 'beverages':
+      case 'beverage':
+        return 'drinks';
+      default:
+        return key;
+    }
+  }
+
+  // 1. UI aliases → 2. Exact DB name → 3. Category fallback → 4. Placeholder
   static String getMenuImage(String category, String itemName) {
-    final exact = exactMenuImages[itemName.trim()] ??
+    final trimmed = itemName.trim();
+    final fromAlias = menuUiAliases[trimmed] ??
+        _findCaseInsensitive(menuUiAliases, itemName);
+    if (fromAlias != null) return fromAlias;
+
+    final exact = exactMenuImages[trimmed] ??
         _findCaseInsensitive(exactMenuImages, itemName);
     if (exact != null) return exact;
 
-    switch (category.toLowerCase()) {
+    switch (normalizeCuisineForMenuImage(category)) {
       case 'bbq':
         return 'assets/images/menu/bbq/chicken_tikka.jpeg';
       case 'bread':
@@ -149,7 +210,7 @@ class ImageResolver {
       case 'drinks':
         return 'assets/images/menu/drinks/cola.jpg';
       case 'fast_food':
-        return 'assets/images/menu/fast_food/cheeseburger.png';
+        return 'assets/images/confirm.png';
       default:
         return fallbackImage;
     }

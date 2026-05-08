@@ -31,7 +31,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   String _selectedPaymentMethod = 'COD';
   int? _selectedCardId;
-  String _selectedPaymentLabel = 'Cash on Delivery';
 
   static const double _deliveryFee = 150;
   static const double _taxRate = 0.05;
@@ -46,8 +45,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         widget.initialPaymentMethod.toUpperCase().contains('CARD')
             ? 'CARD'
             : 'COD';
-    _selectedPaymentLabel =
-        _selectedPaymentMethod == 'CARD' ? 'Card' : 'Cash on Delivery';
 
     // ── Wire voice handler ─────────────────────────────────────
     _voiceHandler = VoiceOrderHandler();
@@ -163,8 +160,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _selectedPaymentMethod = method.toUpperCase() == 'CARD' ? 'CARD' : 'COD';
       _selectedCardId = null;
-      _selectedPaymentLabel =
-          _selectedPaymentMethod == 'CARD' ? 'Card' : 'Cash on Delivery';
     });
   }
 
@@ -196,14 +191,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() {
       _selectedPaymentMethod = (result['payment_method'] ?? 'COD').toString();
       _selectedCardId = result['card_id'] as int?;
-
-      if (_selectedPaymentMethod == 'COD') {
-        _selectedPaymentLabel = 'Cash on Delivery';
-      } else if (_selectedCardId != null) {
-        _selectedPaymentLabel = 'Card Selected';
-      } else {
-        _selectedPaymentLabel = 'Card';
-      }
     });
   }
 
@@ -563,8 +550,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   const SizedBox(width: 12),
                                   Text(
                                     _statusText,
-                                    style:
-                                        const TextStyle(color: Colors.white),
+                                    style: const TextStyle(color: Colors.white),
                                   ),
                                 ],
                               )
@@ -638,13 +624,11 @@ class _PaymentChip extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: selected
-              ? color.primary.withValues(alpha: 0.12)
-              : color.surface,
+          color:
+              selected ? color.primary.withValues(alpha: 0.12) : color.surface,
           border: Border.all(
-            color: selected
-                ? color.primary
-                : color.outline.withValues(alpha: 0.4),
+            color:
+                selected ? color.primary : color.outline.withValues(alpha: 0.4),
             width: selected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(10),
@@ -658,8 +642,7 @@ class _PaymentChip extends StatelessWidget {
               child: Text(
                 label,
                 style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight:
-                      selected ? FontWeight.w700 : FontWeight.normal,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
                   color: selected ? color.primary : theme.hintColor,
                 ),
               ),
