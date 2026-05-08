@@ -83,7 +83,16 @@ from infrastructure.db import SQL_ENGINE
 from infrastructure.config import AGENT_TASKS_CHANNEL
 from infrastructure.database_connection import DatabaseConnection
 
-_REDIS_CLIENT = redis_lib.StrictRedis(host=os.getenv("REDIS_HOST", "localhost"), port=int(os.getenv("REDIS_PORT", 6379)), db=0, decode_responses=True)
+_redis_url = os.getenv("REDIS_URL")
+if _redis_url:
+    _REDIS_CLIENT = redis_lib.StrictRedis.from_url(_redis_url, decode_responses=True)
+else:
+    _REDIS_CLIENT = redis_lib.StrictRedis(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT") or 6379),
+        db=0,
+        decode_responses=True,
+    )
 
 upsell_agent = UpsellAgent()
 recommendation_engine = RecommendationEngine()
