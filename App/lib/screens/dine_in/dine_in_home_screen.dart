@@ -520,6 +520,10 @@ class _DineInHomeScreenState extends State<DineInHomeScreen> {
 
   String _resolveImagePath(Map<String, dynamic> item) {
     final imageUrl = (item['image_url'] ?? '').toString().trim();
+    final bundled = ApiConfig.flutterBundledAssetPath(imageUrl);
+    if (bundled != null) {
+      return bundled;
+    }
     final resolved = ApiConfig.resolvePublicImageUrl(imageUrl);
     if (resolved != null) {
       return resolved;

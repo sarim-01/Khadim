@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:khaadim/services/api_config.dart';
 import 'package:khaadim/services/favorites_service.dart';
 import 'package:khaadim/services/cart_service.dart';
 import 'package:khaadim/utils/ImageResolver.dart';
@@ -118,7 +119,30 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   // ── Image helper ─────────────────────────────────────────────
   Widget _itemImage(String? imageUrl, String name, String type, {double size = 60}) {
     final url = (imageUrl ?? '').trim();
+    final bundled = ApiConfig.flutterBundledAssetPath(url);
+    if (bundled != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.asset(
+          bundled,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              _assetImage(name, type, size: size),
+        ),
+      );
+    }
     final hasUrl = url.startsWith('http://') || url.startsWith('https://');
+    final networkUrl = ApiConfig.resolvePublicImageUrl(url);
+    if (networkUrl != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(networkUrl,
+            width: size, height: size, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _assetImage(name, type, size: size)),
+      );
+    }
     if (hasUrl) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),

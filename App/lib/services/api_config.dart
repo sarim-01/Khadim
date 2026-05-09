@@ -21,20 +21,36 @@ class ApiConfig {
     return 'http://192.168.18.25:8000';
   }
 
+  /// Paths under `assets/...` are **Flutter bundles**, not URLs on [baseUrl].
+  /// Use [flutterBundledAssetPath] and `Image.asset` for those; production APIs
+  /// rarely serve `/assets/menu/...`.
+  static String? flutterBundledAssetPath(String? raw) {
+    if (raw == null) return null;
+    var t = raw.trim();
+    if (t.isEmpty) return null;
+    if (t.startsWith('/assets/')) {
+      t = t.substring(1);
+    }
+    if (t.startsWith('assets/')) {
+      return t;
+    }
+    return null;
+  }
+
   /// Turns API `image_url` values into an absolute URL when the server returns
   /// `/uploads/...`, `uploads/...`, or other app-relative paths (not bundled assets).
-  /// Returns null when [raw] should be handled as a local asset path instead.
+  /// Bundled Flutter paths (`assets/...`) return null — use [flutterBundledAssetPath].
   static String? resolvePublicImageUrl(String? raw) {
     if (raw == null) return null;
     final t = raw.trim();
     if (t.isEmpty) return null;
-    if (t.startsWith('http://') || t.startsWith('https://')) {
-      return t;
-    }
-    if (t.startsWith('assets/') || t.startsWith('/assets/')) {
+    if (flutterBundledAssetPath(t) != null) {
       return null;
     }
     final base = baseUrl.replaceAll(RegExp(r'/$'), '');
+    if (t.startsWith('http://') || t.startsWith('https://')) {
+      return t;
+    }
     if (t.startsWith('/') && !t.startsWith('/assets/')) {
       return '$base$t';
     }

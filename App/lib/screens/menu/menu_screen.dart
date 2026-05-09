@@ -455,6 +455,16 @@ class _MenuItemCardState extends State<_MenuItemCard> {
 
   Widget _menuImage() {
     final raw = widget.item.imageUrl.trim();
+    final bundled = ApiConfig.flutterBundledAssetPath(raw);
+    if (bundled != null) {
+      return Image.asset(
+        bundled,
+        height: 110,
+        width: 110,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _fallbackImage(),
+      );
+    }
     final networkUrl = ApiConfig.resolvePublicImageUrl(raw);
     if (networkUrl != null) {
       return Image.network(
