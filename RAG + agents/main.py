@@ -91,7 +91,6 @@ upsell_agent = UpsellAgent()
 recommendation_engine = RecommendationEngine()
 custom_deal_agent = CustomDealAgent()
 
-print("DB URL = ", os.getenv("DATABASE_URL"))
 logger = logging.getLogger("voice_nlp")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
