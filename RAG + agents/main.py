@@ -20,6 +20,10 @@ from typing import Optional, Any, Tuple
 try:
     from voice.transcribe import transcribe_audio, warmup_transcriber
     VOICE_ENABLED = True
+    _stt_backend = os.getenv("STT_BACKEND", "elevenlabs").strip().lower()
+    _el_key = os.getenv("ELEVENLABS_API_KEY", "")
+    _key_hint = f"...{_el_key[-4:]}" if len(_el_key) >= 4 else "(not set)"
+    print(f"[VOICE] STT enabled — backend={_stt_backend}, elevenlabs_key={_key_hint}")
 except Exception as e:
     print(f"[WARNING] Voice transcription disabled: {e}")
     transcribe_audio = None

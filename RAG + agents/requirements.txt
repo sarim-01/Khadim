@@ -26,7 +26,7 @@ langchain-groq
 tiktoken
 
 # Voice (inference only)
-elevenlabs
+elevenlabs>=1.0.0
 openai-whisper
 gtts
 pydub
