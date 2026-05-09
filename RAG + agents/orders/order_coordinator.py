@@ -2,11 +2,11 @@ import os
 import uuid
 import json
 import time
-import redis
 from dotenv import load_dotenv
 
 from infrastructure.config import AGENT_TASKS_CHANNEL, RESPONSE_CHANNEL_PREFIX
 from infrastructure.database_connection import DatabaseConnection
+from infrastructure.redis_client import get_sync_redis
 
 """
 Legacy Redis-based coordination flow.
@@ -24,12 +24,9 @@ Do not use it as the main mobile app checkout path.
 
 load_dotenv()
 
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-
 
 def get_redis_client():
-    return redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+    return get_sync_redis()
 
 
 def send_task_and_get_response(agent: str, command: str, payload: dict, timeout: float = 8.0) -> dict:

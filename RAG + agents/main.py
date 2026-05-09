@@ -82,17 +82,10 @@ from typing import Dict, List
 from infrastructure.db import SQL_ENGINE
 from infrastructure.config import AGENT_TASKS_CHANNEL
 from infrastructure.database_connection import DatabaseConnection
+from infrastructure.redis_client import get_sync_redis
 
-_redis_url = os.getenv("REDIS_URL")
-if _redis_url:
-    _REDIS_CLIENT = redis_lib.StrictRedis.from_url(_redis_url, decode_responses=True)
-else:
-    _REDIS_CLIENT = redis_lib.StrictRedis(
-        host=os.getenv("REDIS_HOST", "localhost"),
-        port=int(os.getenv("REDIS_PORT") or 6379),
-        db=0,
-        decode_responses=True,
-    )
+# Same rules as RedisConnection / order_coordinator: prefer REDIS_URL (Railway).
+_REDIS_CLIENT = get_sync_redis()
 
 upsell_agent = UpsellAgent()
 recommendation_engine = RecommendationEngine()

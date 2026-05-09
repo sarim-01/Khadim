@@ -1,7 +1,6 @@
 """Redis connection utilities."""
 
-import os
-import redis
+from infrastructure.redis_client import get_sync_redis
 
 
 class RedisConnection:
@@ -17,19 +16,7 @@ class RedisConnection:
 
     @staticmethod
     def _create_instance():
-        host = os.getenv("REDIS_HOST", "127.0.0.1")
-        port = int(os.getenv("REDIS_PORT", 6379))
-
-        r = redis.Redis(
-            host=host,
-            port=port,
-            db=0,
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-            retry_on_timeout=True,
-        )
-
-        # Fail fast if Redis isn't reachable
+        r = get_sync_redis()
+        # Fail fast if Redis isn't reachable (same expectation as before)
         r.ping()
         return r

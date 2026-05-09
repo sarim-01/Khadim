@@ -1,12 +1,12 @@
 import streamlit as st
 import time
 import pandas as pd
-import redis
 import json
 import uuid
 import os
 from dotenv import load_dotenv
 from infrastructure.database_connection import DatabaseConnection
+from infrastructure.redis_client import get_sync_redis
 import psycopg2.extras
 
 load_dotenv()
@@ -14,9 +14,7 @@ load_dotenv()
 # --- CONFIG ---
 st.set_page_config(page_title="👨‍🍳 Kitchen Dashboard", page_icon="🔥", layout="wide")
 
-# Redis Config
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+# Redis: REDIS_URL (Railway) or REDIS_HOST + REDIS_PORT
 AGENT_TASKS_CHANNEL = "agent_tasks"
 RESPONSE_CHANNEL_PREFIX = "agent_response_"
 
@@ -31,7 +29,7 @@ STATUS_CONFIG = {
 # --- HELPERS ---
 
 def get_redis_client():
-    return redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+    return get_sync_redis()
 
 def send_update_command(task_id, new_status):
     """Sends a command to the Kitchen Agent via Redis to update status."""
