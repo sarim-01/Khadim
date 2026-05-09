@@ -21,7 +21,7 @@ try:
     from voice.transcribe import transcribe_audio, warmup_transcriber
     VOICE_ENABLED = True
     _stt_backend = os.getenv("STT_BACKEND", "elevenlabs").strip().lower()
-    _el_key = os.getenv("ELEVENLABS_API_KEY", "")
+    _el_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
     _key_hint = f"...{_el_key[-4:]}" if len(_el_key) >= 4 else "(not set)"
     print(f"[VOICE] STT enabled — backend={_stt_backend}, elevenlabs_key={_key_hint}")
 except Exception as e:
@@ -462,6 +462,23 @@ def _is_custom_deal_confirmation(text: str) -> bool:
     has_custom_phrase = bool(re.search(r"\b(custom deal|create deal|make deal)\b", t))
     has_affirmation = bool(re.search(r"\b(yes|ok|okay|confirm|haan|han|جی)\b", t))
     return has_custom_phrase and has_affirmation
+
+def _asr_exception_is_unauthorized(exc: BaseException) -> bool:
+    """Detect ElevenLabs / httpx 401 in exception chains."""
+    seen: set[int] = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        sc = getattr(cur, "status_code", None)
+        if sc == 401:
+            return True
+        resp = getattr(cur, "response", None)
+        if resp is not None and getattr(resp, "status_code", None) == 401:
+            return True
+        cur = cur.__cause__ or cur.__context__
+    low = str(exc).lower()
+    return "401" in low or "unauthorized" in low or "invalid_api_key" in low
+
 
 def _voice_log(session_id: str, stage: str, **fields: Any) -> None:
     lines = [f"[VOICE][{stage}] session={session_id}"]
@@ -3499,7 +3516,24 @@ async def chat_voice_endpoint(
                 "memory_slots": (_SESSION_MEMORY.get(session_id, {}) or {}).get("slots", {}),
                 "raw": {"error": "asr_timeout"},
             }
-        except Exception:
+        except Exception as asr_exc:
+            if _asr_exception_is_unauthorized(asr_exc):
+                _voice_log(
+                    session_id,
+                    "asr_provider_auth",
+                    error_type=type(asr_exc).__name__,
+                    hint="ElevenLabs returned 401 — fix ELEVENLABS_API_KEY in Railway (new key, STT enabled)",
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": "Speech recognition service rejected the API key (401). "
+                        "Create a new ElevenLabs API key with Speech-to-Text access, "
+                        "set ELEVENLABS_API_KEY on Railway, redeploy.",
+                        "code": "elevenlabs_unauthorized",
+                    },
+                )
+            _voice_log(session_id, "asr_error", error_type=type(asr_exc).__name__)
             return JSONResponse(
                 status_code=422,
                 content={"error": "Could not process audio format. Please try again."},

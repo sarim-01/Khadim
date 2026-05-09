@@ -22,7 +22,8 @@ _STT_BACKEND = os.getenv("STT_BACKEND", "elevenlabs").strip().lower()
 if _STT_BACKEND == "elevenlabs":
     from elevenlabs.client import ElevenLabs as _ElevenLabsClient
 
-    _ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+    # Strip whitespace/newlines — pasted Railway vars sometimes include trailing spaces.
+    _ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
     if not _ELEVENLABS_API_KEY:
         raise RuntimeError(
             "ELEVENLABS_API_KEY is not set. "
