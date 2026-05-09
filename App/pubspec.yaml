@@ -53,5 +53,16 @@ flutter:
     - assets/images/khaadim_logo_dark.png
     - assets/images/khaadim_logo_light.png
     - assets/images/confirm.png
-    # Menu / deal images used by DB `image_url` and ImageResolver (bundle into APK).
-    - assets/images/menu/
+    # Deal images (root files + each subfolder)
+    - assets/images/deals/
+    - assets/images/deals/BBQ deals/
+    - assets/images/deals/Chinese Deals/
+    - assets/images/deals/Desi deals/
+    - assets/images/deals/FastFood deals/
+    # Menu images — each subfolder must be listed separately in Flutter
+    - assets/images/menu/bbq/
+    - assets/images/menu/bread/
+    - assets/images/menu/chinese/
+    - assets/images/menu/desi/
+    - assets/images/menu/drinks/
+    - assets/images/menu/fast_food/
