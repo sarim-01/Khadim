@@ -4151,7 +4151,42 @@ def get_cart_recommendations(
 
 @app.get("/health")
 def health():
+    """Liveness: process is up (does not check DB/Redis — use `/health/ready`)."""
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready(verbose: bool = False):
+    """Readiness: PostgreSQL + Redis reachable. Use on Railway/in monitoring to verify wiring."""
+
+    postgres_ok = False
+    postgres_err: Optional[str] = None
+    try:
+        postgres_ok = DatabaseConnection.get_instance().test_connection()
+    except Exception as e:
+        postgres_err = str(e)
+
+    redis_ok = False
+    redis_err: Optional[str] = None
+    try:
+        get_sync_redis().ping()
+        redis_ok = True
+    except Exception as e:
+        redis_err = str(e)
+
+    body: Dict[str, Any] = {
+        "status": "ready" if (postgres_ok and redis_ok) else "not_ready",
+        "postgres": "ok" if postgres_ok else "error",
+        "redis": "ok" if redis_ok else "error",
+    }
+    if verbose:
+        if postgres_err:
+            body["postgres_detail"] = postgres_err
+        if redis_err:
+            body["redis_detail"] = redis_err
+
+    status_code = 200 if postgres_ok and redis_ok else 503
+    return JSONResponse(status_code=status_code, content=body)
 
 
 # =========================================================

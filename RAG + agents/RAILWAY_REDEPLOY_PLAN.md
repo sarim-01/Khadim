@@ -43,7 +43,8 @@ Deploy from **Git** (push) or **Dockerfile** root = `RAG + agents` repo.
 
 **Verify:**
 
-- `GET https://YOUR_PUBLIC_URL/health`
+- `GET https://YOUR_PUBLIC_URL/health` (process up only)
+- `GET https://YOUR_PUBLIC_URL/health/ready` (Postgres + Redis — expect `200` and `"status":"ready"`; add `?verbose=true` for error hints)
 - `GET https://YOUR_PUBLIC_URL/docs`
 - `GET https://YOUR_PUBLIC_URL/menu`
 - `POST https://YOUR_PUBLIC_URL/auth/login` with a known user.
