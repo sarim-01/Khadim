@@ -54,14 +54,24 @@ if _STT_BACKEND == "elevenlabs":
         # ElevenLabs language codes for Urdu / English
         lang_code = "ur" if normalized_hint == "ur" else "en"
 
-        with open(audio_path, "rb") as audio_file:
-            result = _el_client.speech_to_text.convert(
-                file=audio_file,
-                model_id="scribe_v2",
-                language_code=lang_code,
-                tag_audio_events=False,   # no [laughter] / [applause] tags needed
-                diarize=False,            # single speaker — customer at kiosk
+        try:
+            with open(audio_path, "rb") as audio_file:
+                result = _el_client.speech_to_text.convert(
+                    file=audio_file,
+                    model_id="scribe_v2",
+                    language_code=lang_code,
+                    tag_audio_events=False,   # no [laughter] / [applause] tags needed
+                    diarize=False,            # single speaker — customer at kiosk
+                )
+        except Exception as e:
+            # Surface ElevenLabs JSON detail (invalid_api_key, subscription_required, etc.)
+            print(
+                f"[STT] ElevenLabs speech_to_text failed: "
+                f"type={type(e).__name__} "
+                f"http_status={getattr(e, 'status_code', None)!s} "
+                f"body={getattr(e, 'body', None)!r}"
             )
+            raise
 
         # SDK returns a SpeechToTextChunkResponseModel; .text is the transcript
         return (result.text or "").strip()
