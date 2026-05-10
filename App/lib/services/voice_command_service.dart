@@ -93,6 +93,20 @@ String? formatServerIntentSummary(
   if (names.isEmpty) return null;
 
   final ur = language.toLowerCase() == 'ur';
+
+  // Multiple identical cart ops (e.g. several add_to_cart in one utterance)
+  // should summarize once — repeating "adding to cart" looked like a glitch.
+  if (names.every((n) => n == 'add_to_cart')) {
+    final n = names.length;
+    if (n >= 2) {
+      return ur ? '$n آئٹمز کارٹ میں شامل کر رہا ہوں' : 'Adding $n items to your cart';
+    }
+  }
+  if (names.every((n) => n == 'remove_from_cart') && names.length >= 2) {
+    final n = names.length;
+    return ur ? '$n آئٹمز کارٹ سے ہٹا رہا ہوں' : 'Removing $n items from your cart';
+  }
+
   String lbl(String name) {
     switch (name) {
       case 'add_to_cart':

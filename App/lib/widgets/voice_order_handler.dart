@@ -16,11 +16,11 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 
 import 'package:khaadim/app_config.dart';
 import 'package:khaadim/providers/cart_provider.dart';
@@ -70,7 +70,7 @@ const _NO_WORDS = [
 class VoiceOrderHandler extends ChangeNotifier {
   final ChatService _chat = ChatService();
   late final VoiceCommandService _voiceCmd;
-  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  final AudioRecorder _recorder = AudioRecorder();
   final FlutterTts _tts = FlutterTts();
   final AudioPlayer _gttsPlayer = AudioPlayer();
   late final VoiceCustomDealService _customDeal;
@@ -181,7 +181,6 @@ class VoiceOrderHandler extends ChangeNotifier {
   Future<void> _initRecorder() async {
     final ok = await Permission.microphone.request();
     if (!ok.isGranted) return;
-    await _recorder.openRecorder();
     _recorderReady = true;
   }
 
@@ -208,7 +207,7 @@ class VoiceOrderHandler extends ChangeNotifier {
 
   Future<void> onMicCancel() async {
     if (!_isRecording) return;
-    if (_isUrdu) await _recorder.stopRecorder();
+    if (_isUrdu) await _recorder.cancel();
     _isRecording = false;
     notifyListeners();
   }
@@ -223,11 +222,13 @@ class VoiceOrderHandler extends ChangeNotifier {
     final path =
         '${dir.path}/khaadim_${DateTime.now().millisecondsSinceEpoch}.wav';
     try {
-      await _recorder.startRecorder(
-        toFile: path,
-        codec: Codec.pcm16WAV,
-        sampleRate: 16000,
-        numChannels: 1,
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: path,
       );
       _isRecording = true;
       notifyListeners();
@@ -237,7 +238,7 @@ class VoiceOrderHandler extends ChangeNotifier {
   }
 
   Future<void> _stopWhisper(BuildContext context) async {
-    final path = await _recorder.stopRecorder();
+    final path = await _recorder.stop();
     _isRecording = false;
     notifyListeners();
     if (path == null) return;
@@ -260,7 +261,7 @@ class VoiceOrderHandler extends ChangeNotifier {
         _sessionId,
         file,
         'voice',
-        'ur',
+        _isUrdu ? 'ur' : 'en',
         conversationHistory: _memory.toApiHistory(),
       );
       final transcript = ChatService.extractTranscript(voiceRes);
@@ -403,7 +404,7 @@ class VoiceOrderHandler extends ChangeNotifier {
         response: voiceRes,
         context: context,
         sessionId: _sessionId,
-        language: 'ur',
+        language: _isUrdu ? 'ur' : 'en',
         nav: _nav,
         memory: _memory,
       );
@@ -946,7 +947,7 @@ class VoiceOrderHandler extends ChangeNotifier {
 
   @override
   void dispose() {
-    _recorder.closeRecorder();
+    _recorder.dispose();
     _gttsPlayer.stop();
     _gttsPlayer.dispose();
     _tts.stop();

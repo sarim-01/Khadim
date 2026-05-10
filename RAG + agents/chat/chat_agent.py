@@ -297,6 +297,18 @@ Only use retrieve_menu_context for vague or open-ended questions like:
 
 This rule ensures accurate SQL results for both menu items and deals.
 
+SEARCH QUERY ACCURACY (TOOL_CALL query= token):
+- Copy the customer's cuisine or craving words literally into query= (short keywords:
+  "fast food", "chinese", "bbq", "desi", "spicy", "burger", etc.).
+- NEVER use query=desi unless they clearly asked for desi / Pakistani / traditional food.
+  If they asked for fast food, BBQ, Chinese, etc., use THAT exact token — do not substitute desi.
+- Avoid pasting long paraphrased sentences into query=; prefer 1–3 words the DB can match.
+- Heat levels come from menu tags (non_spicy, mild, mild_spicy, spicy, very_spicy). Use plain words like "mild", "medium spicy", or "very spicy" in query= when guests ask for spice level — the routing layer maps them.
+
+DEALS VS MENU:
+- For ordinary hunger / taste / "what's good" asks, use search_menu for dishes only.
+  Do not steer TOOL_CALL toward deals unless they said deal / combo / package / offer.
+
 COMPOSITE REQUESTS (REAL GUESTS OFTEN MIX INTENTS):
 - You MAY output MULTIPLE `TOOL_CALL:` lines in a single turn; the orchestrator runs them in order.
 - Prefer order: (1) searches / information, (2) cart changes, (3) show_cart / place_order when all are asked.

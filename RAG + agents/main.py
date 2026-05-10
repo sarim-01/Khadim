@@ -480,6 +480,33 @@ def _asr_exception_is_unauthorized(exc: BaseException) -> bool:
     return "401" in low or "unauthorized" in low or "invalid_api_key" in low
 
 
+def _elevenlabs_api_body(exc: BaseException) -> Any:
+    """Best-effort parse of ElevenLabs SDK ApiError.body from an exception chain."""
+    seen: set[int] = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        body = getattr(cur, "body", None)
+        if body is not None:
+            return body
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
+def _elevenlabs_unusual_activity_message(exc: BaseException) -> Optional[str]:
+    """ElevenLabs sometimes returns 401 + detail.status=detected_unusual_activity (not a bad key)."""
+    body = _elevenlabs_api_body(exc)
+    if not isinstance(body, dict):
+        return None
+    detail = body.get("detail")
+    if not isinstance(detail, dict):
+        return None
+    if detail.get("status") != "detected_unusual_activity":
+        return None
+    msg = detail.get("message")
+    return msg if isinstance(msg, str) and msg.strip() else None
+
+
 def _voice_log(session_id: str, stage: str, **fields: Any) -> None:
     lines = [f"[VOICE][{stage}] session={session_id}"]
     for k, v in fields.items():
@@ -555,6 +582,99 @@ def _combined_search_query(nlp: Dict[str, Any], normalized_text: str) -> str:
     if c:
         return c
     return (normalized_text or "").strip()
+
+
+_CUISINE_SLUG_TO_MENU_QUERY = {
+    "fast_food": "fast food",
+    "desi": "desi",
+    "chinese": "chinese",
+    "bbq": "bbq",
+}
+
+
+def _slug_to_menu_query(slug: Optional[str]) -> str:
+    """Map heuristic cuisine slug from `_extract_keywords_intent` to a DB-friendly token."""
+    if not slug:
+        return ""
+    s = str(slug).strip().lower().replace(" ", "_")
+    return _CUISINE_SLUG_TO_MENU_QUERY.get(s, str(slug).replace("_", " ").strip())
+
+
+def _is_vague_menu_question_text(t: str) -> bool:
+    """True when the user is browsing ('what do you have') — never feed whole sentence to ILIKE."""
+    tl = (t or "").lower().strip()
+    if not tl:
+        return False
+    vague_res = (
+        r"\bwhat\s+dishes\b",
+        r"\bwhat\s+food\b",
+        r"\bwhat\s+do\s+you\s+have\b",
+        r"\bwhat\b.*\bavailable\b",
+        r"\bwhat\b.*\byou\s+offer\b",
+        r"\bshow\s+me\s+(the\s+)?menu\b",
+        r"\byour\s+menu\b",
+        r"\btell\s+me\s+(about\s+)?(the\s+)?dishes\b",
+        r"\bmenu\b.*\?",
+        r"\bkya\s+kya\s+(hai|hain)\b",
+        r"\bkya\s+(hai|hain)\s+(yahan|idhar|available)\b",
+    )
+    if any(re.search(p, tl) for p in vague_res):
+        return True
+    if len(tl) > 100 and ("?" in tl or tl.startswith("what ") or tl.startswith("which ")):
+        return True
+    return False
+
+
+def _menu_search_should_include_deals(nlp: Dict[str, Any], normalized_text: str) -> bool:
+    """If False, plain menu browse skips deal rows (lighter JSON and app popup)."""
+    sig = (nlp or {}).get("signals") or {}
+    if sig.get("mentions_deal"):
+        return True
+    if (nlp or {}).get("intent") == "search_deal":
+        return True
+    tl = (normalized_text or "").lower()
+    return bool(re.search(r"\bdeal", tl))
+
+
+def _compact_search_menu_query_from_nlp(nlp: Dict[str, Any], normalized_text: str) -> str:
+    """Same trimming as deterministic `search_menu`: avoid useless full-sentence ILIKE patterns."""
+    kws = (nlp or {}).get("keywords") or {}
+    cuisine = (kws.get("cuisine") or "").strip()
+    qt_raw = str(kws.get("query_text") or normalized_text or "").strip()
+    slug_q = _slug_to_menu_query(cuisine)
+    t_low = (normalized_text or "").strip().lower()
+    t_low = re.sub(r"[\.\!\?۔]+$", "", t_low).strip()
+    if _is_vague_menu_question_text(qt_raw) or _is_vague_menu_question_text(t_low):
+        return slug_q or ""
+    if len(qt_raw) > 90:
+        return slug_q or qt_raw[:72].strip()
+    return slug_q or qt_raw
+
+
+VOICE_BROWSE_MENU_CAP = 12
+VOICE_BROWSE_DEAL_CAP_LIGHT = 5
+
+
+def _cap_voice_browse_payload(
+    nlp: Dict[str, Any],
+    normalized_text: str,
+    menu_items: List[Dict[str, Any]],
+    deals: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    mi = list(menu_items or [])
+    dl = list(deals or [])
+    sig = (nlp or {}).get("signals") or {}
+    deal_focus = (
+        (nlp or {}).get("intent") == "search_deal"
+        or sig.get("mentions_deal")
+        or bool(re.search(r"\bdeal", (normalized_text or "").lower()))
+    )
+    max_deals = 12 if deal_focus else VOICE_BROWSE_DEAL_CAP_LIGHT
+    if len(mi) > VOICE_BROWSE_MENU_CAP:
+        mi = mi[:VOICE_BROWSE_MENU_CAP]
+    if len(dl) > max_deals:
+        dl = dl[:max_deals]
+    return mi, dl
 
 
 def _merge_menu_and_deal_results(
@@ -1413,6 +1533,87 @@ def _extract_change_quantity_args(t: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+def _infer_spice_band_from_text(t: str) -> Optional[str]:
+    """Map a guest utterance to menu_item.tags spice bands. None if not heat-related."""
+    tl = (t or "").strip().lower()
+    if not tl:
+        return None
+    if any(
+        p in tl
+        for p in (
+            "very spicy",
+            "extra hot",
+            "extra spicy",
+            "super spicy",
+            "extremely spicy",
+            "bahut tikha",
+            "bahut teekha",
+            "zyada tikha",
+            "زیادہ تیکھا",
+            "بہت تیکھا",
+            "بہت مسالے",
+        )
+    ):
+        return "extra_hot"
+    if any(
+        p in tl
+        for p in (
+            "medium spice",
+            "medium hot",
+            "medium spicy",
+            "mild spicy",
+            "mild spice",
+            "a little spicy",
+            "little spicy",
+            "some spice",
+            "thora tikha",
+            "thori spice",
+            "thodi spice",
+            "ذرا سا تیکھا",
+        )
+    ):
+        return "medium"
+    if any(
+        p in tl
+        for p in (
+            "not spicy",
+            "non spicy",
+            "no spice",
+            "without spice",
+            "less spicy",
+            "less hot",
+            "kam tikha",
+            "kam teekha",
+            "kam masala",
+            "کم تیکھا",
+            "بغیر مرچ",
+        )
+    ):
+        return "mild"
+    if re.search(r"\bmild\b", tl) and "medium" not in tl:
+        return "mild"
+    if any(
+        k in tl
+        for k in (
+            "spicy",
+            "hot food",
+            "something hot",
+            "something spicy",
+            "tikha",
+            "teekha",
+            "chatpata",
+            "chatpatta",
+            "masaledar",
+            "masalay",
+            "تیکھا",
+            "مسالے",
+            "چٹپٹا",
+        )
+    ):
+        return "hot"
+    return None
+
+
 def _deterministic_chat_tool_calls(
     text: str,
     nlp: Dict[str, Any],
@@ -1490,13 +1691,54 @@ def _deterministic_chat_tool_calls(
     if any(k in t for k in _show_cart_needles):
         return [{"name": "show_cart", "args": {}}]
 
+    # Heat / flavour level from live DB tags (non_spicy, mild, mild_spicy, spicy, very_spicy).
+    spice_band = _infer_spice_band_from_text(t) or _infer_spice_band_from_text(
+        (text or "").strip().lower()
+    )
+    if spice_band:
+        return [{"name": "search_menu", "args": {"query": f"spiciness:{spice_band}"}}]
+
     # Natural taste/craving asks (Urdu + Roman) should map deterministically.
     if any(k in t for k in ("میٹھا", "میٹھی", "meetha", "meethi", "sweet", "dessert")):
         return [{"name": "search_menu", "args": {"query": "sweet"}}]
-    if any(k in t for k in ("spicy", "tikha", "teekha", "chatpata", "masaledar", "تیکھا", "مسالے")):
-        return [{"name": "search_menu", "args": {"query": "spicy"}}]
-    if any(k in t for k in ("mild", "light", "halka", "halki", "healthy", "diet", "ہلکا", "ہیلتھی")):
+    if any(
+        k in t
+        for k in ("light", "halka", "halki", "healthy", "diet", "ہلکا", "ہیلتھی")
+    ) and not any(
+        k in t
+        for k in ("spicy", "tikha", "teekha", "masala", "تیکھا", "مسالے", "chatpata")
+    ):
         return [{"name": "search_menu", "args": {"query": "light"}}]
+
+    # Hunger / cuisine asks often stay `general_chat` because `_extract_keywords_intent`
+    # only promotes search_menu when it sees literal "menu"|"item"|"dish". Route here so
+    # Groq cannot substitute an unrelated cuisine (e.g. desi when user said fast food).
+    if nlp.get("intent") == "general_chat" and cuisine:
+        browse_hit = any(
+            k in t
+            for k in (
+                "food",
+                "eat",
+                "eating",
+                "hungry",
+                "something to eat",
+                "order",
+                "would like",
+                "want ",
+                "want some",
+                "craving",
+                "khao",
+                "khana",
+                "chaiye",
+                "chahiye",
+                "meal",
+                "snack",
+            )
+        )
+        if browse_hit:
+            mq = _slug_to_menu_query(cuisine)
+            if mq:
+                return [{"name": "search_menu", "args": {"query": mq}}]
 
     # Weather/cold-drink asks in Urdu/Roman often get normalized as generic
     # "item show". Route them to drinks instead of empty search_menu results.
@@ -1506,8 +1748,8 @@ def _deterministic_chat_tool_calls(
         return [{"name": "search_menu", "args": {"query": "drinks"}}]
 
     if nlp.get("intent") == "search_menu":
-        query = cuisine or (kws.get("query_text") or text)
-        return [{"name": "search_menu", "args": {"query": str(query)}}]
+        qfinal = _compact_search_menu_query_from_nlp(nlp, text)
+        return [{"name": "search_menu", "args": {"query": str(qfinal)}}]
 
     # Recommendation/discovery utterances with cuisine should open filtered menu.
     # Example: "mujhe chinese mein acha khana dikhao".
@@ -1527,7 +1769,8 @@ def _deterministic_chat_tool_calls(
         )
     ):
         if not any(k in t for k in ("deal", "ڈیل", "combo", "bundle")):
-            return [{"name": "search_menu", "args": {"query": str(cuisine)}}]
+            mq = _slug_to_menu_query(cuisine) or str(cuisine)
+            return [{"name": "search_menu", "args": {"query": mq}}]
 
     if any(k in t for k in ["waiter", "call waiter", "need waiter", "service please", "waiter please", "bill waiter"]):
         for_cash = any(k in t for k in ["cash bill", "cash payment", "pay cash"])
@@ -1803,8 +2046,9 @@ def _deterministic_chat_tool_calls(
         # delivery + dine-in behave consistently without LLM dependency.
         if any(k in t for k in ("thanda", "cold", "chilled", "گرمی", "ٹھنڈا", "ٹھنڈی")):
             return [{"name": "search_menu", "args": {"query": "drinks"}}]
-        if any(k in t for k in ("spicy", "tikha", "teekha", "chatpata", "masaledar", "تیکھا", "مسالے")):
-            return [{"name": "search_menu", "args": {"query": "spicy"}}]
+        sb = _infer_spice_band_from_text(t)
+        if sb:
+            return [{"name": "search_menu", "args": {"query": f"spiciness:{sb}"}}]
         if any(k in t for k in ("light", "healthy", "diet", "halka", "halki", "ہلکا", "ہیلتھی")):
             return [{"name": "search_menu", "args": {"query": "light"}}]
         source = "top_sellers" if any(k in t for k in ["top seller", "popular", "best selling", "trending"]) else "general"
@@ -2055,7 +2299,7 @@ def _load_menu_catalog_for_prompt(max_items: int = 50) -> List[Dict[str, Any]]:
     try:
         q = text("""
             SELECT item_name, item_description, item_category,
-                   item_cuisine, item_price
+                   item_cuisine, item_price, tags
             FROM menu_item
             ORDER BY item_id
             LIMIT 200;
@@ -2096,6 +2340,9 @@ def _format_catalog_for_prompt(items: List[Dict[str, Any]]) -> str:
         line = f"- {name}{meta}"
         if desc:
             line += f" — {desc}"
+        heat = _format_spice_level_for_display(it.get("tags"), language="en")
+        if heat:
+            line += f" [kitchen spice tag: {heat}]"
         lines.append(line)
     return "\n".join(lines)
 
@@ -2180,8 +2427,9 @@ def _conversational_waiter_reply(
         "their EXACT names (copy the name verbatim).\n"
         "2. Never invent dishes, prices, or ingredients. If nothing fits, "
         "say so politely and suggest the closest real item.\n"
-        "3. Infer spiciness / temperature / sweetness / heaviness from each "
-        "item's name and description — do not make up attributes.\n"
+        "3. Use bracket hints like [kitchen spice tag: …] when present — those "
+        "labels come from the database tags field (non_spicy, mild, mild_spicy, "
+        "spicy, very_spicy). Do not contradict them.\n"
         "4. Keep it SHORT: 2–4 sentences, waiter tone. No bullet lists, no "
         "markdown, no emojis, no prices unless the user asked.\n"
         "5. Recommend at most 3 items; usually 1–2 is better.\n"
@@ -2661,15 +2909,34 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
             return "Opening that section now."
         if name in {"search_menu", "search_deal", "retrieve_menu_context"}:
             if name == "search_menu":
-                q = str(args.get("query") or "").strip().lower()
-                if "spicy" in q:
+                qraw = str(args.get("query") or "").strip()
+                ql = qraw.lower()
+                if ql.startswith("spiciness:"):
+                    band = ql.split(":", 1)[1]
+                    prof = {
+                        "mild": (
+                            "Certainly. Here are gentler options with little to no chili heat, "
+                            "based on how we tag dishes in our menu."
+                        ),
+                        "medium": (
+                            "Here are medium-heat selections — flavourful spice without going extreme."
+                        ),
+                        "hot": (
+                            "Here are bolder, spicier picks — tagged spicy or hotter in our kitchen system."
+                        ),
+                        "extra_hot": (
+                            "These are our hottest items. Please order carefully if you’re sensitive to chili."
+                        ),
+                    }
+                    return prof.get(band, "Here are dishes that match that spice level.")
+                if "spicy" in ql:
                     return "Got it. Here are some spicy options."
-                if any(k in q for k in ("sweet", "dessert", "meetha", "meethi")):
+                if any(k in ql for k in ("sweet", "dessert", "meetha", "meethi")):
                     return "Sure, here are some sweet options."
-                if any(k in q for k in ("drinks", "drink", "cold", "thanda", "chilled")):
+                if any(k in ql for k in ("drinks", "drink", "cold", "thanda", "chilled")):
                     return "Great choice. Here are some chilled drink options."
-                if any(k in q for k in ("light", "mild", "healthy")):
-                    return "Here are some light options for you."
+                if any(k in ql for k in ("light", "healthy")) and "spiciness:" not in ql:
+                    return "Here are some lighter options from our menu."
             return "Here are the matching options."
         if name == "manage_favourites":
             action_val = str((args or {}).get("action") or "").lower()
@@ -2716,14 +2983,24 @@ def _action_reply_from_tools(tool_calls: List[Dict[str, Any]], language: str) ->
         return "متعلقہ اسکرین کھول رہا ہوں۔"
     if name in {"search_menu", "search_deal", "retrieve_menu_context"}:
         if name == "search_menu":
-            q = str(args.get("query") or "").strip().lower()
-            if "spicy" in q:
+            qraw = str(args.get("query") or "").strip()
+            ql = qraw.lower()
+            if ql.startswith("spiciness:"):
+                band = ql.split(":", 1)[1]
+                ur = {
+                    "mild": "بالکل — یہ رہے ہلکے / کم مرچ والے آپشنز (ہمارے مینو ٹیگز کے مطابق)۔",
+                    "medium": "یہ درمیانی تیکھاپن والے ڈشز ہیں۔",
+                    "hot": "یہ چٹپٹے اور زیادہ مسالے والے آپشنز ہیں۔",
+                    "extra_hot": "یہ بہت تیکھے آئٹمز ہیں — احتیاط سے آرڈر کریں۔",
+                }
+                return ur.get(band, "یہ آپ کے مسالے کی سطح سے ملتے جلتے آئٹمز ہیں۔")
+            if "spicy" in ql:
                 return "بالکل، یہ رہے کچھ چٹ پٹے آپشنز۔"
-            if any(k in q for k in ("sweet", "dessert", "meetha", "meethi")):
+            if any(k in ql for k in ("sweet", "dessert", "meetha", "meethi")):
                 return "ضرور، یہ رہے کچھ میٹھے آپشنز۔"
-            if any(k in q for k in ("drinks", "drink", "cold", "thanda", "chilled")):
+            if any(k in ql for k in ("drinks", "drink", "cold", "thanda", "chilled")):
                 return "بہترین، یہ رہے کچھ ٹھنڈے مشروبات۔"
-            if any(k in q for k in ("light", "mild", "healthy")):
+            if any(k in ql for k in ("light", "healthy")) and "spiciness:" not in ql:
                 return "یہ رہے آپ کیلئے ہلکے آپشنز۔"
         return "یہ رہے متعلقہ آپشنز۔"
     if name == "manage_favourites":
@@ -2968,7 +3245,8 @@ def fetch_menu_items_by_name(name: str):
             serving_size,
             quantity_description,
             prep_time_minutes,
-            image_url
+            image_url,
+            tags
         FROM menu_item
         WHERE 
             item_name ILIKE :name
@@ -2984,6 +3262,106 @@ def fetch_menu_items_by_name(name: str):
         rows = conn.execute(query, {"name": f"%{name}%"}).mappings().all()
 
     return [dict(r) for r in rows]
+
+
+def _normalize_menu_tags(raw: Any) -> List[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(x).strip().lower() for x in raw if str(x).strip()]
+    return []
+
+
+def _format_spice_level_for_display(tags: Any, *, language: str = "en") -> str:
+    """Human-readable heat from DB tags (for English replies / UI)."""
+    if language != "en":
+        return ""
+    s = set(_normalize_menu_tags(tags))
+    if "very_spicy" in s:
+        return "Extra hot"
+    if "spicy" in s:
+        return "Spicy"
+    if "mild_spicy" in s:
+        return "Medium heat"
+    if "non_spicy" in s:
+        return "No chili heat"
+    if "mild" in s:
+        return "Mild"
+    return ""
+
+
+def _item_matches_spice_band(tags_l: List[str], band: str) -> bool:
+    s = set(tags_l)
+    if band == "extra_hot":
+        return "very_spicy" in s
+    if band == "mild":
+        if "non_spicy" in s:
+            return True
+        if "mild" in s and not (s & {"mild_spicy", "spicy", "very_spicy"}):
+            return True
+        return False
+    if band == "medium":
+        return "mild_spicy" in s
+    if band == "hot":
+        return bool(s & {"spicy", "very_spicy", "mild_spicy"})
+    return False
+
+
+def fetch_menu_items_by_spice_band(band: str) -> List[Dict[str, Any]]:
+    """Filter menu rows using ``tags`` (non_spicy, mild, mild_spicy, spicy, very_spicy)."""
+    band = (band or "").strip().lower()
+    if band not in {"mild", "medium", "hot", "extra_hot"}:
+        return []
+    query = text("""
+        SELECT 
+            item_id,
+            item_name,
+            item_description,
+            item_category,
+            item_cuisine,
+            item_price,
+            serving_size,
+            quantity_description,
+            prep_time_minutes,
+            image_url,
+            tags
+        FROM menu_item
+        WHERE COALESCE(availability, TRUE)
+          AND tags IS NOT NULL
+          AND cardinality(tags) > 0
+        ORDER BY item_id
+        LIMIT :lim;
+    """)
+    lim = 180
+    with SQL_ENGINE.connect() as conn:
+        rows = conn.execute(query, {"lim": lim}).mappings().all()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        row = dict(r)
+        tags_l = _normalize_menu_tags(row.get("tags"))
+        if _item_matches_spice_band(tags_l, band):
+            out.append(row)
+        if len(out) >= 24:
+            break
+    return out
+
+
+def _resolve_search_menu_fetch(
+    nlp: Dict[str, Any],
+    normalized_text: str,
+    query: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    q = (query or "").strip()
+    if q.startswith("spiciness:"):
+        band = q.split(":", 1)[1].strip()
+        return fetch_menu_items_by_spice_band(band), []
+    menu_items = fetch_menu_items_by_name(q)
+    deals = (
+        fetch_deals_by_name(q)
+        if _menu_search_should_include_deals(nlp, normalized_text)
+        else []
+    )
+    return menu_items, deals
 
 
 def fetch_deals_by_name(name: str):
@@ -3083,21 +3461,27 @@ def format_results_response(menu_items, deals, language: str = "ur") -> str:
     # Menu items section
     if menu_items:
         if language == "en":
-            lines.append("These items are available:")
+            lines.append(
+                "Here are a few menu picks that match — spice labels come straight from our dish tags:"
+            )
         else:
             lines.append("یہ آئٹمز دستیاب ہیں:")
 
         for item in menu_items[:4]:
             name = item.get("item_name", "")
             price = item.get("item_price", 0)
-            lines.append(f"- {name} — Rs {price}")
+            heat = _format_spice_level_for_display(item.get("tags"), language=language)
+            if language == "en" and heat:
+                lines.append(f"- {name} — Rs {price} ({heat})")
+            else:
+                lines.append(f"- {name} — Rs {price}")
 
     # Deals section
     if deals:
         lines.append("")
 
         if language == "en":
-            lines.append("These deals are available:")
+            lines.append("Featured deals that line up with your search:")
         else:
             lines.append("یہ ڈیلز دستیاب ہیں:")
 
@@ -3306,14 +3690,16 @@ async def chat_text_endpoint(req: TextChatRequest):
         if call["name"] in {"search_menu", "retrieve_menu_context"}:
             used_search_tool = True
             query = call["args"].get("query", "")
-            menu_items = fetch_menu_items_by_name(query)
-            deals = fetch_deals_by_name(query)
+            menu_items, deals = _resolve_search_menu_fetch(
+                nlp, normalized_text, str(query)
+            )
 
-    # Deterministic menu fallback so menu/filter voice commands don't rely on free-text.
+    # Deterministic menu fallback when LLM did not emit search_menu.
     if nlp["intent"] == "search_menu" and not used_search_tool:
-        query = (nlp.get("keywords", {}).get("cuisine") or normalized_text)
-        menu_items = fetch_menu_items_by_name(query)
-        deals = fetch_deals_by_name(query)
+        query = _compact_search_menu_query_from_nlp(nlp, normalized_text)
+        menu_items, deals = _resolve_search_menu_fetch(
+            nlp, normalized_text, str(query)
+        )
         tool_calls = [{"name": "search_menu", "args": {"query": str(query)}}]
         used_search_tool = True
 
@@ -3559,6 +3945,30 @@ async def chat_voice_endpoint(
             }
         except Exception as asr_exc:
             if _asr_exception_is_unauthorized(asr_exc):
+                abuse = _elevenlabs_unusual_activity_message(asr_exc)
+                if abuse:
+                    _voice_log(
+                        session_id,
+                        "asr_provider_blocked",
+                        error_type=type(asr_exc).__name__,
+                        hint=(
+                            "ElevenLabs returned detected_unusual_activity (401) — free tier disabled on "
+                            "this account; upgrade plan, contact ElevenLabs support, or set "
+                            "STT_BACKEND=whisper on Railway."
+                        ),
+                    )
+                    return JSONResponse(
+                        status_code=503,
+                        content={
+                            "error": (
+                                "Speech recognition is blocked by ElevenLabs for this API key "
+                                "(unusual-activity / free-tier restriction). Use a paid ElevenLabs plan, "
+                                "a different key, or switch STT_BACKEND=whisper."
+                            ),
+                            "code": "elevenlabs_account_blocked",
+                            "provider_detail": abuse[:800],
+                        },
+                    )
                 _voice_log(
                     session_id,
                     "asr_provider_auth",
@@ -3859,18 +4269,21 @@ async def chat_voice_endpoint(
                 history,
             )
             if convo and convo.get("reply"):
+                convo_items = list(convo.get("menu_items") or [])
+                if len(convo_items) > VOICE_BROWSE_MENU_CAP:
+                    convo_items = convo_items[:VOICE_BROWSE_MENU_CAP]
                 _voice_log(
                     session_id,
                     "conversational",
                     convo_ms=int((_time.time() - convo_start) * 1000),
-                    matched_items=len(convo.get("menu_items") or []),
+                    matched_items=len(convo_items),
                 )
                 return {
                     "success": True,
                     "transcript": transcript,
                     "normalized_text": normalized_text,
                     "reply": convo["reply"],
-                    "menu_items": convo.get("menu_items") or [],
+                    "menu_items": convo_items,
                     "deals": [],
                     "tool_calls": [],
                     "nlp": nlp,
@@ -3924,14 +4337,16 @@ async def chat_voice_endpoint(
             if call["name"] in {"search_menu", "retrieve_menu_context"}:
                 used_search_tool = True
                 query = call["args"].get("query", "")
-                menu_items = fetch_menu_items_by_name(query)
-                deals = fetch_deals_by_name(query)
+                menu_items, deals = _resolve_search_menu_fetch(
+                    nlp, normalized_text, str(query)
+                )
 
         # Deterministic menu fallback so menu/filter commands stay DB-grounded.
         if nlp["intent"] == "search_menu" and not used_search_tool:
-            query = (nlp.get("keywords", {}).get("cuisine") or normalized_text)
-            menu_items = fetch_menu_items_by_name(query)
-            deals = fetch_deals_by_name(query)
+            query = _compact_search_menu_query_from_nlp(nlp, normalized_text)
+            menu_items, deals = _resolve_search_menu_fetch(
+                nlp, normalized_text, str(query)
+            )
             tool_calls = [{"name": "search_menu", "args": {"query": str(query)}}]
             used_search_tool = True
 
@@ -3945,6 +4360,7 @@ async def chat_voice_endpoint(
         menu_items, deals, tool_calls = _merge_menu_and_deal_results(
             nlp, normalized_text, menu_items, deals, tool_calls
         )
+        menu_items, deals = _cap_voice_browse_payload(nlp, normalized_text, menu_items, deals)
 
         # Deterministic fallback: no deal found, continue conversation with memory.
         if (
@@ -4009,8 +4425,7 @@ async def chat_voice_endpoint(
                         if not menu_items:
                             menu_items = convo.get("menu_items") or []
                         _voice_log(session_id, "conversational_fallback", matched_items=len(menu_items))
-                    else:
-                        reply_text = _safe_domain_reply(response_language)
+        menu_items, deals = _cap_voice_browse_payload(nlp, normalized_text, menu_items, deals)
 
         _voice_log(
             session_id,
