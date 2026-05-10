@@ -910,6 +910,23 @@ _QTY_WORDS = {
 }
 
 
+def _strip_voice_trailing_punct(s: str) -> str:
+    """Remove trailing Arabic/Urdu full stop and ASCII punctuation (ASR often ends with ۔)."""
+    return re.sub(r"[\s\u061f\u06d4\.!?…]+$", "", (s or "").strip()).strip()
+
+
+def _strip_leading_voice_greeting(t: str) -> str:
+    """Drop leading salaam so comma-split clauses parse as item lists."""
+    if not (t or "").strip():
+        return (t or "").strip()
+    return re.sub(
+        r"^(?:السلام\s+علیکم|assalam\s+u?\s*alaikum|assalamu\s+alaikum|salam)[۔.\s,،\-–—:]*\s*",
+        "",
+        t,
+        flags=re.IGNORECASE | re.UNICODE,
+    ).strip()
+
+
 def _split_add_item_chunks(raw: str) -> List[str]:
     text_value = (raw or "").strip().lower()
     if not text_value:
@@ -999,6 +1016,8 @@ _URDU_ADD_PATTERNS: List[str] = [
     r"^(.+?)\s+(?:کارٹ|کاٹ|کارڈ)\s+میں\s+(?:ڈال|شامل|add|ایڈ)\s*(?:دو|دیں|دیجیے|کریں|کرو|کر\s*دو)?\s*$",
     # Mixed Latin "cart" + Urdu postposition + add (Whisper often does this)
     r"^(.+?)\s+cart\s+میں\s+(?:add|ایڈ)\s*(?:کر\s*دو|کرو|کریں)?\s*$",
+    # Items list then Latin/mixed "add" + Urdu imperative — NO "cart" (common ASR)
+    r"^(.+?)\s+(?:add|ایڈ)\s*(?:کر\s*دو|کرو|کریں|کر\s*2)?\s*$",
     # X ڈال دو / شامل کرو
     r"^(.+?)\s+(?:ڈال\s*دو|ڈال\s*دیں|شامل\s*کرو|شامل\s*کریں|شامل\s*کر\s*دو)\s*$",
     # X add karo/kar do/krdo
@@ -1048,7 +1067,7 @@ def _extract_urdu_add_to_cart(
 
     Returns resolved add_to_cart tool-call dicts or [] on no match.
     """
-    t = (raw_transcript or "").strip()
+    t = _strip_voice_trailing_punct(raw_transcript or "")
     if not t:
         return []
 
@@ -1122,7 +1141,7 @@ def _detect_urdu_add_to_cart_intent(raw_transcript: str) -> bool:
     Roman-Urdu / mixed-language utterances like "cart میں add" are intentionally
     left to the deterministic + LLM path which handles them better.
     """
-    t = (raw_transcript or "").strip()
+    t = _strip_voice_trailing_punct(raw_transcript or "")
     if not t:
         return False
     t_lower = t.lower()
@@ -1134,6 +1153,11 @@ def _detect_urdu_add_to_cart_intent(raw_transcript: str) -> bool:
         "شامل کرو", "شامل کریں", "شامل کر \u062f\u0648",
         "ایڈ کرو", "ایڈ کریں",
     ]
+    # Mixed: item list + "add کر dois without saying "cart" (ElevenLabs ASR).
+    if re.search(r"(?:add|ایڈ)\s*(?:کر\s*دو|کرو|کریں|کر\s*2)", t):
+        return True
+    if re.search(r"\badd\s+(?:kar\s*do|karo|krdo|kar\s*2)\b", t_lower):
+        return True
     for sig in urdu_signals:
         if re.search(r"[a-z]", sig, flags=re.IGNORECASE):
             if sig.lower() in t_lower:
@@ -1399,6 +1423,7 @@ def _deterministic_chat_tool_calls(
     if not t:
         return None
     t = re.sub(r"[\.\!\?۔]+$", "", t).strip()
+    t = _strip_leading_voice_greeting(t)
     t_for_clear = re.sub(
         r"\bcard(?=\s+(?:mein|me|mai|se|میں|سے)\b)",
         "cart",
@@ -1674,6 +1699,22 @@ def _deterministic_chat_tool_calls(
             )
             raw_phrase = re.sub(r"\s+", " ", raw_phrase).strip(" .!?-—")
             if raw_phrase:
+                calls = _build_add_to_cart_calls(raw_phrase, voice_strict=voice_strict)
+                if calls:
+                    return calls
+        # Clause ends with Roman Urdu "kar do / kar 2" only (last item in list often drops "add").
+        _kar_only = re.search(
+            r"^(.+?)\s+(?:kar\s*do|kar\s*2|krdo|kardo)\s*$",
+            _clause,
+            flags=re.IGNORECASE,
+        )
+        if _kar_only:
+            raw_phrase = (_kar_only.group(1) or "").strip()
+            if raw_phrase and re.match(
+                r"^\s*(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|ek|do|teen)\s+",
+                raw_phrase,
+                flags=re.IGNORECASE,
+            ):
                 calls = _build_add_to_cart_calls(raw_phrase, voice_strict=voice_strict)
                 if calls:
                     return calls
